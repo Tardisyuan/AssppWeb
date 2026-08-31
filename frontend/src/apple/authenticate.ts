@@ -24,6 +24,7 @@ export async function authenticate(
 ): Promise<Account> {
   let cookies: Cookie[] = existingCookies ? [...existingCookies] : [];
   let storeFront = "";
+  let storeFrontRaw = "";
   let lastError: Error | null = null;
 
   const defaultAuthEndpoint = new URL(defaultAuthURL);
@@ -73,6 +74,7 @@ export async function authenticate(
       // Read store front
       const storeHeader = response.headers["x-set-apple-store-front"];
       if (storeHeader) {
+        storeFrontRaw = storeHeader;
         const parts = storeHeader.split("-");
         if (parts[0]) {
           storeFront = parts[0];
@@ -140,6 +142,7 @@ export async function authenticate(
         password,
         appleId: (accountInfo.appleId as string) ?? "",
         store: storeFront,
+        storeFront: storeFrontRaw || undefined,
         firstName: (address.firstName as string) ?? "",
         lastName: (address.lastName as string) ?? "",
         passwordToken: (dict.passwordToken as string) ?? "",

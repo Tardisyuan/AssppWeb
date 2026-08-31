@@ -99,6 +99,25 @@ After authentication, Apple returns a `pod` header:
 - Pod is stored on the Account object and used for all subsequent API calls
 - Functions: `storeAPIHost(pod?)` and `purchaseAPIHost(pod?)` in `frontend/src/apple/config.ts`
 
+## Store Front Header
+
+Apple returns the storefront as `x-set-apple-store-front: 143460-27,34`. Two
+parts of it matter and they are stored separately on the `Account`:
+
+- `store` — the leading store id (`143460`), used by `storeIdToCountry()` and
+  the region pickers
+- `storeFront` — the full header value, kept verbatim
+
+`buyProduct` requires the full value in the `X-Apple-Store-Front` request
+header. Sending only `${store}-1` makes Apple reject the password token with
+failureType 2034/2042, which surfaces as a misleading "password token expired"
+error even though the token is valid. `purchase.ts` therefore prefers
+`account.storeFront` and only falls back to `${store}-1` for accounts stored
+before this field existed.
+
+Verified against ipatool 2.4.0, which sends `acc.StoreFront` unmodified; the
+request payloads are otherwise byte-identical.
+
 ## Dynamic Host Validation (Backend)
 
 The Wisp server validates target hosts via `hostname_whitelist` in `backend/src/services/wsProxy.ts`:

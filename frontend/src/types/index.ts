@@ -34,6 +34,10 @@ export interface Account {
   password: string;
   appleId: string;
   store: string;
+  // Full x-set-apple-store-front value (e.g. 143460-27,34). The store field
+  // above keeps only the leading store id, which loses the platform context
+  // that buyProduct requires.
+  storeFront?: string;
   firstName: string;
   lastName: string;
   passwordToken: string;
