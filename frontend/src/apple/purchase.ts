@@ -64,9 +64,7 @@ async function purchaseWithParams(
     "Content-Type": "application/x-apple-plist",
     "iCloud-DSID": account.directoryServicesIdentifier,
     "X-Dsid": account.directoryServicesIdentifier,
-    // buyProduct rejects the token with 2034/2042 when the storefront is
-    // missing its platform context, so prefer the value Apple returned.
-    "X-Apple-Store-Front": account.storeFront ?? `${account.store}-1`,
+    "X-Apple-Store-Front": `${account.store}-1`,
     "X-Token": account.passwordToken,
   };
 
