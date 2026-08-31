@@ -417,7 +417,7 @@
     "purchase": {
       "paidNotSupported": "유료 앱 구매는 지원되지 않습니다",
       "unavailable": "항목을 일시적으로 사용할 수 없습니다",
-      "passwordExpired": "비밀번호 토큰이 만료되었습니다",
+      "reauthUnavailable": "라이선스를 받으려면 다시 로그인해야 하지만 현재 Apple이 이 계정에 대해 제한하고 있습니다. 대신 ipatool을 사용하세요: ipatool purchase -b {{bundleID}}. 완료 후 이 페이지로 돌아오면 다운로드할 수 있습니다.",
       "subscriptionRequired": "구독이 필요합니다",
       "termsRequired": "이용 약관에 동의해야 합니다: {{url}}",
       "failed": "구매 실패: {{failureType}}",

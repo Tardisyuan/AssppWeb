@@ -90,16 +90,26 @@ async function purchaseWithParams(
     switch (failureType) {
       case "2059":
         throw new PurchaseError(i18n.t("errors.purchase.unavailable"), "2059");
+      // buyProduct needs a freshly issued passwordToken. Apple reports a stale
+      // one as 2034/2042 or as "Your password has changed." — all three mean
+      // "sign in again", not "the password is wrong". Renewing the token needs
+      // the authenticate endpoint, which Apple now gates behind a SAP
+      // signature this client cannot produce, so point at the workaround
+      // instead of blaming the stored credentials.
       case "2034":
       case "2042":
         throw new PurchaseError(
-          i18n.t("errors.purchase.passwordExpired"),
+          i18n.t("errors.purchase.reauthUnavailable", {
+            bundleID: app.bundleID,
+          }),
           failureType,
         );
       default: {
         if (customerMessage === "Your password has changed.") {
           throw new PurchaseError(
-            i18n.t("errors.purchase.passwordExpired"),
+            i18n.t("errors.purchase.reauthUnavailable", {
+              bundleID: app.bundleID,
+            }),
             failureType,
           );
         }

@@ -417,7 +417,7 @@
     "purchase": {
       "paidNotSupported": "Покупка платных приложений не поддерживается",
       "unavailable": "Элемент временно недоступен",
-      "passwordExpired": "Токен пароля истек",
+      "reauthUnavailable": "Получение лицензии требует повторного входа, который Apple сейчас блокирует для этой учётной записи. Используйте ipatool: ipatool purchase -b {{bundleID}}, затем вернитесь сюда для загрузки.",
       "subscriptionRequired": "Требуется подписка",
       "termsRequired": "Вы должны принять Условия и положения: {{url}}",
       "failed": "Ошибка покупки: {{failureType}}",

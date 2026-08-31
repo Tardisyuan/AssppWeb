@@ -417,7 +417,7 @@
     "purchase": {
       "paidNotSupported": "有料アプリの購入はサポートされていません",
       "unavailable": "項目は一時的に利用できません",
-      "passwordExpired": "パスワードトークンの期限が切れています",
+      "reauthUnavailable": "ライセンスの取得には再サインインが必要ですが、現在 Apple がこのアカウントに対して制限しています。代わりに ipatool をご利用ください: ipatool purchase -b {{bundleID}}。完了後、このページに戻るとダウンロードできます。",
       "subscriptionRequired": "サブスクリプションが必要です",
       "termsRequired": "利用規約に同意する必要があります: {{url}}",
       "failed": "購入失敗: {{failureType}}",
