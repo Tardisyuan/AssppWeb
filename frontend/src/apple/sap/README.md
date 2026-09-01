@@ -37,9 +37,8 @@ Nothing in setup involves credentials. The only identity is the hardware id,
 which is the same guid the client already sends in the clear, so the setup can
 happen well before anyone types a password.
 
-Still to do: check a signature is actually accepted by `authenticate`, serve
-the assets from the backend instead of a local ipatool cache, wire it into
-`authenticate.ts`, and find out whether it fits in mobile Safari's memory.
+Still to do: wire it into `authenticate.ts` behind a Web Worker, and find out
+whether it fits in mobile Safari's memory.
 
 ## The block splitter
 
