@@ -155,10 +155,23 @@ export function decode(code: Uint8Array, offset: number): Decoded {
       hasModRM = !TWO_BYTE_NO_MODRM.has(second);
 
       if (second >= 0x80 && second <= 0x8f) {
-        immediate = Imm.Zed; // Jcc rel32
+        // Jcc rel32 carries no ModRM; counting one shifts every later
+        // boundary by a byte.
+        hasModRM = false;
+        immediate = Imm.Zed;
         endsBlock = true;
-      } else if (second === 0x70 || second === 0xc2 || second === 0xc4 ||
-                 second === 0xc5 || second === 0xc6 || second === 0xba) {
+      } else if (
+        // pshuf* and the SSE compares
+        second === 0x70 || second === 0xc2 || second === 0xc4 ||
+        second === 0xc5 || second === 0xc6 ||
+        // shift groups 12 to 14, taking a count byte
+        second === 0x71 || second === 0x72 || second === 0x73 ||
+        // bit test group 8
+        second === 0xba ||
+        // SHLD and SHRD by an immediate; the guest's obfuscation is full of
+        // these and a missed byte here shifts every later boundary
+        second === 0xa4 || second === 0xac
+      ) {
         immediate = Imm.Byte;
       } else if (second === 0x05 || second === 0x0b) {
         endsBlock = true; // SYSCALL, UD2

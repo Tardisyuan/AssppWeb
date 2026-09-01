@@ -33,10 +33,14 @@ const MAX_OUTPUT_SIZE = 16n << 20n;
 const EXECUTION_TIMEOUT_MICROS = 0n;
 const INSTRUCTION_LIMIT = 100_000_000;
 
-// unicorn.js aborts inside QEMU's Tiny Code Interpreter on a basic block of
-// more than about ninety instructions, so long blocks are executed in pieces:
-// a HLT is planted this far ahead of the guest, and execution resumes from
-// there once it stops. Sixty-four leaves margin under the measured limit.
+// unicorn.js aborts inside QEMU's Tiny Code Interpreter on a long basic
+// block, so long blocks are executed in pieces: a HLT is planted this far
+// ahead of the guest, and execution resumes from there once it stops.
+//
+// Synthetic blocks of one-byte instructions survive to eighty-eight, but the
+// guest's are wider and generate more interpreter operations each, so the
+// usable figure is lower. Measured over a full SAP setup: thirty-two works
+// and takes 63s, forty-eight works but takes 76s, sixty-four traps.
 const MAX_BLOCK_INSTRUCTIONS = 32;
 
 // Enough bytes to decode MAX_BLOCK_INSTRUCTIONS of any encoding.
