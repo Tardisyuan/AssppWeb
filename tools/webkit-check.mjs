@@ -7,15 +7,13 @@
 // dedicated workers, the Cache API and the rest behave the way the signer
 // needs them to on WebKit rather than on Chrome.
 //
-// Playwright is not a dependency of this project, so install it where the
-// import can find it and run from there, with the dev servers already up:
+// Playwright is not a dependency of this project. ESM resolves imports from
+// this file's own directory rather than the working directory, so it has to
+// be installed at the repo root — installing it under frontend/ does not help
+// however the script is invoked. With the dev servers already up:
 //
-//   cd frontend
 //   npm install --no-save playwright && npx playwright install webkit
-//   node ../tools/webkit-check.mjs        # resolves playwright from frontend
-//
-// If the import fails, that is why: ESM resolves from this file's directory,
-// so copy it next to node_modules or install playwright at the repo root.
+//   node tools/webkit-check.mjs
 
 import { webkit, devices } from "playwright";
 
