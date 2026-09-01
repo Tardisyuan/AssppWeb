@@ -246,6 +246,27 @@ export class Machine {
     this.shims.trace = trace;
   }
 
+  /**
+   * Reports every instruction the guest reaches. Very slow, and only useful
+   * for finding where a run goes wrong: the guest is an opaque binary and
+   * this build reports an invalid opcode as a module trap with no address.
+   */
+  traceInstructions(callback: (address: bigint) => void): void {
+    this.engine.addCodeHook(1n, 0n, callback);
+  }
+
+  /** Reads a register by the names Engine exposes, for diagnostics. */
+  register(name: "rax" | "rdi" | "rsi" | "rsp" | "rip"): bigint {
+    const map = {
+      rax: this.engine.regRAX,
+      rdi: this.engine.regRDI,
+      rsi: this.engine.regRSI,
+      rsp: this.engine.regRSP,
+      rip: this.engine.regRIP,
+    };
+    return this.engine.regRead(map[name]);
+  }
+
   /** Reports guest accesses to unmapped memory; see Engine.addUnmappedHook. */
   setUnmappedTrace(
     trace: (kind: string, address: bigint, size: number) => void,
