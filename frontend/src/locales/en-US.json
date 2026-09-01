@@ -110,6 +110,7 @@
       "preparingAssets": "Preparing signing components {{percent}}%",
       "preparingSigner": "Setting up the signer, this takes about a minute…",
       "signingRequest": "Signing the request…",
+      "signerFailed": "Could not prepare the signer: {{error}}",
       "verify": "Verify",
       "cancel": "Cancel",
       "authFailed": "Authentication failed",
@@ -447,11 +448,9 @@
       "shareAcquired": "Link Acquired",
       "downloadIpaStarted": "Downloading IPA",
       "deleteSuccess": "Delete Success",
-      "downloadLimit": "Size Limit Exceeded",
-      "preparingSigner": "Preparing to sign"
+      "downloadLimit": "Size Limit Exceeded"
     },
     "msg": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}",
-    "preparingSigner": "Preparing the signing components. The first time takes a minute or two — leave this page open.",
     "msgShare": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\nYou can use AirDrop to share it with your friends.",
     "msgFailed": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\nError: {{error}}",
     "downloadLimit": {

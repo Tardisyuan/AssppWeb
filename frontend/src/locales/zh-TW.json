@@ -110,6 +110,7 @@
       "preparingAssets": "正在準備簽名元件 {{percent}}%",
       "preparingSigner": "正在初始化簽名器，約需一分鐘…",
       "signingRequest": "正在簽署請求…",
+      "signerFailed": "簽名元件準備失敗：{{error}}",
       "verify": "驗證",
       "cancel": "取消",
       "authFailed": "認證失敗",
@@ -447,11 +448,9 @@
       "shareAcquired": "連結已獲取",
       "downloadIpaStarted": "開始下載 IPA",
       "deleteSuccess": "刪除成功",
-      "downloadLimit": "檔案大小超限",
-      "preparingSigner": "正在準備簽名"
+      "downloadLimit": "檔案大小超限"
     },
     "msg": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}",
-    "preparingSigner": "正在準備簽名元件，首次約需一到兩分鐘，請勿關閉頁面。",
     "msgShare": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\n您可以使用 Airdrop 分享給您的朋友。",
     "msgFailed": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\n錯誤: {{error}}",
     "downloadLimit": {

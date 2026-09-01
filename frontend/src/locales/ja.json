@@ -110,6 +110,7 @@
       "preparingAssets": "署名コンポーネントを準備中 {{percent}}%",
       "preparingSigner": "署名機能を初期化しています。1分ほどかかります…",
       "signingRequest": "リクエストに署名しています…",
+      "signerFailed": "署名コンポーネントを準備できませんでした: {{error}}",
       "verify": "確認",
       "cancel": "キャンセル",
       "authFailed": "認証に失敗しました",
@@ -447,11 +448,9 @@
       "shareAcquired": "リンク取得成功",
       "downloadIpaStarted": "IPA ダウンロード開始",
       "deleteSuccess": "削除成功",
-      "downloadLimit": "サイズ制限超過",
-      "preparingSigner": "署名の準備中"
+      "downloadLimit": "サイズ制限超過"
     },
     "msg": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}",
-    "preparingSigner": "署名コンポーネントを準備しています。初回は1〜2分かかります。このページを閉じないでください。",
     "msgShare": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\nAirDropを使用して友達と共有できます。",
     "msgFailed": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\nエラー: {{error}}",
     "downloadLimit": {

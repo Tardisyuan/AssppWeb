@@ -10,6 +10,7 @@
 // for it, and the assets are only fetched when they are about to be used.
 
 import { getAccessToken } from "../../components/Auth/PasswordGate";
+import { useSapStore } from "../../store/sap";
 import type { AssetProgress } from "./assets";
 import type { WorkerRequest, WorkerResponse } from "./worker";
 
@@ -22,7 +23,10 @@ const SETUP_TIMEOUT_MS = 15 * 60 * 1000;
 
 let worker: Worker | null = null;
 let ready: Promise<void> | null = null;
+let preparedFor: string | null = null;
 let nextId = 1;
+
+const store = () => useSapStore.getState();
 
 const pending = new Map<
   number,
@@ -36,15 +40,19 @@ function handle(event: MessageEvent<WorkerResponse>) {
   const message = event.data;
 
   if (message.type === "progress") {
-    onProgress?.(
-      message.phase === "assets"
-        ? { phase: "assets", asset: message.asset }
-        : { phase: "setup" },
-    );
+    if (message.phase === "assets") {
+      const { loaded, total } = message.asset;
+      store().setAssets(total ? Math.round((loaded / total) * 100) : 0);
+      onProgress?.({ phase: "assets", asset: message.asset });
+    } else {
+      store().setSetup();
+      onProgress?.({ phase: "setup" });
+    }
     return;
   }
 
   if (message.type === "ready") {
+    store().setReady();
     settleSetup?.resolve();
     settleSetup = null;
     return;
@@ -57,6 +65,8 @@ function handle(event: MessageEvent<WorkerResponse>) {
   }
 
   const error = new Error(message.message);
+  store().setError(error.message);
+
   if (message.id !== undefined) {
     pending.get(message.id)?.reject(error);
     pending.delete(message.id);
@@ -76,11 +86,17 @@ function reset(error: Error) {
   worker?.terminate();
   worker = null;
   ready = null;
+  preparedFor = null;
+  store().setError(error.message);
 }
 
 /**
- * Prepares the signer, reusing it if it already exists. Safe to call more
- * than once; concurrent callers share the same setup.
+ * Prepares the signer, reusing it if one is already set up for this hardware
+ * id. Safe to call more than once; concurrent callers share the same setup.
+ *
+ * A signer is bound to the hardware id it was initialised with, so switching
+ * accounts means building a new one rather than signing with the wrong
+ * identity.
  */
 export function prepareSigner(
   hardwareID: string,
@@ -88,7 +104,11 @@ export function prepareSigner(
 ): Promise<void> {
   onProgress = progress ?? null;
 
-  if (ready) return ready;
+  if (ready && preparedFor === hardwareID) return ready;
+  if (ready) reset(new Error("SAP signer rebuilt for a different device"));
+
+  preparedFor = hardwareID;
+  store().begin(hardwareID);
 
   worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   worker.onmessage = handle;

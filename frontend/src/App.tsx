@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import { lazy, Suspense, useEffect } from "react";
+import { useSapWarmup } from "./hooks/useSapWarmup";
 import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "./store/settings";
 
@@ -35,6 +36,9 @@ function Loading() {
 
 export default function App() {
   const theme = useSettingsStore((s) => s.theme);
+
+  // Gets the SAP signer under way before anyone asks for a signature.
+  useSapWarmup();
 
   useEffect(() => {
     const root = window.document.documentElement;

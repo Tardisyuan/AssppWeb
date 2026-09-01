@@ -87,14 +87,11 @@ export function useDownloadAction() {
     // imported as a token bundle carries none, and trying anyway would spend
     // a minute or two preparing the SAP signer before failing on the empty
     // password — with the button looking dead the whole time.
+    // No announcement here: the signer starts preparing in the background on
+    // load, and SapStatus shows how far along it is, so by the time this runs
+    // it is usually ready and a "this takes a minute" notice would be a lie.
     let currentAccount = account;
     if (account.password) {
-      addToast(
-        t("toast.preparingSigner"),
-        "info",
-        t("toast.title.preparingSigner"),
-      );
-
       try {
         const renewed = await authenticate(
           account.email,

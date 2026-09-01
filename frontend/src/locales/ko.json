@@ -110,6 +110,7 @@
       "preparingAssets": "서명 구성요소 준비 중 {{percent}}%",
       "preparingSigner": "서명기를 초기화하는 중입니다. 1분 정도 걸립니다…",
       "signingRequest": "요청에 서명하는 중…",
+      "signerFailed": "서명 구성요소를 준비하지 못했습니다: {{error}}",
       "verify": "확인",
       "cancel": "취소",
       "authFailed": "인증 실패",
@@ -447,11 +448,9 @@
       "shareAcquired": "링크 획득",
       "downloadIpaStarted": "IPA 다운로드 시작",
       "deleteSuccess": "삭제 성공",
-      "downloadLimit": "크기 제한 초과",
-      "preparingSigner": "서명 준비 중"
+      "downloadLimit": "크기 제한 초과"
     },
     "msg": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}",
-    "preparingSigner": "서명 구성요소를 준비하고 있습니다. 처음에는 1~2분 걸립니다. 페이지를 닫지 마세요.",
     "msgShare": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\nAirDrop을 사용하여 친구와 공유할 수 있습니다.",
     "msgFailed": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\n오류: {{error}}",
     "downloadLimit": {

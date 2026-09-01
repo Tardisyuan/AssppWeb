@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import PageContainer from "../Layout/PageContainer";
 import Spinner from "../common/Spinner";
+import SapStatus from "../common/SapStatus";
 import { useAccounts } from "../../hooks/useAccounts";
 import { useToastStore } from "../../store/toast";
 import { authenticate, AuthenticationError } from "../../apple/authenticate";
@@ -21,8 +22,6 @@ export default function AddAccountForm() {
   const [deviceId, setDeviceId] = useState(() => generateDeviceId());
   const [needsCode, setNeedsCode] = useState(false);
   const [loading, setLoading] = useState(false);
-  // Preparing the SAP signer takes about a minute, so say what it is doing.
-  const [progress, setProgress] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,21 +37,6 @@ export default function AddAccountForm() {
         needsCode && code ? code : undefined,
         undefined,
         cleanedDeviceId,
-        (update) => {
-          if (update.phase === "assets") {
-            setProgress(
-              t("accounts.addForm.preparingAssets", {
-                percent: update.asset.total
-                  ? Math.round((update.asset.loaded / update.asset.total) * 100)
-                  : 0,
-              }),
-            );
-          } else if (update.phase === "setup") {
-            setProgress(t("accounts.addForm.preparingSigner"));
-          } else {
-            setProgress(t("accounts.addForm.signingRequest"));
-          }
-        },
       );
       await addAccount(account);
       addToast(t("accounts.addForm.addSuccess"), "success");
@@ -69,7 +53,6 @@ export default function AddAccountForm() {
       }
     } finally {
       setLoading(false);
-      setProgress("");
     }
   }
 
@@ -193,11 +176,7 @@ export default function AddAccountForm() {
             >
               {t("accounts.addForm.cancel")}
             </button>
-            {progress && (
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                {progress}
-              </span>
-            )}
+            <SapStatus />
           </div>
         </form>
       </div>

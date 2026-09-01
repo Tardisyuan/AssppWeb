@@ -110,6 +110,7 @@
       "preparingAssets": "Подготовка компонентов подписи {{percent}}%",
       "preparingSigner": "Инициализация подписи, это занимает около минуты…",
       "signingRequest": "Подписывание запроса…",
+      "signerFailed": "Не удалось подготовить подпись: {{error}}",
       "verify": "Проверить",
       "cancel": "Отмена",
       "authFailed": "Ошибка аутентификации",
@@ -447,11 +448,9 @@
       "shareAcquired": "Ссылка получена",
       "downloadIpaStarted": "Начало загрузки IPA",
       "deleteSuccess": "Успешное удаление",
-      "downloadLimit": "Превышен лимит размера",
-      "preparingSigner": "Подготовка подписи"
+      "downloadLimit": "Превышен лимит размера"
     },
     "msg": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}",
-    "preparingSigner": "Подготовка компонентов подписи. В первый раз это занимает одну-две минуты — не закрывайте страницу.",
     "msgShare": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\nВы можете использовать AirDrop, чтобы поделиться ею с друзьями.",
     "msgFailed": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\nОшибка: {{error}}",
     "downloadLimit": {
