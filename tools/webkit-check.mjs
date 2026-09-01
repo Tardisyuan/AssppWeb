@@ -6,6 +6,16 @@
 // headroom than a phone. It answers the other half — whether WebAssembly,
 // dedicated workers, the Cache API and the rest behave the way the signer
 // needs them to on WebKit rather than on Chrome.
+//
+// Playwright is not a dependency of this project, so install it where the
+// import can find it and run from there, with the dev servers already up:
+//
+//   cd frontend
+//   npm install --no-save playwright && npx playwright install webkit
+//   node ../tools/webkit-check.mjs        # resolves playwright from frontend
+//
+// If the import fails, that is why: ESM resolves from this file's directory,
+// so copy it next to node_modules or install playwright at the repo root.
 
 import { webkit, devices } from "playwright";
 
