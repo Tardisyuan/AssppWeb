@@ -12,7 +12,7 @@
 // SHA-256 before being kept.
 
 import { createHash } from "crypto";
-import { mkdir, rename, writeFile } from "fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "fs/promises";
 import path from "path";
 import { Readable } from "stream";
 import { inflateSync } from "zlib";
@@ -66,6 +66,72 @@ export const REQUIRED_ASSETS: AssetSpec[] = [
 
 export function assetDirectory(): string {
   return path.join(config.dataDir, "sap");
+}
+
+export type AssetState = "ok" | "missing" | "corrupt";
+
+// Digesting 38 MB on every request would be wasteful, and these files never
+// change once written, so a verdict is kept until the file does. Size and
+// modification time are enough to notice a replacement.
+const verdicts = new Map<string, { size: number; mtimeMs: number; state: AssetState }>();
+
+/**
+ * Checks one asset against its recorded size and digest.
+ *
+ * The size alone is not enough: a file of the right length but wrong contents
+ * loads fine and then fails somewhere deep inside the emulator, with nothing
+ * to connect the fault back to a bad download.
+ */
+export async function verifyAsset(spec: AssetSpec): Promise<AssetState> {
+  const file = path.join(assetDirectory(), spec.name);
+
+  let info: Awaited<ReturnType<typeof stat>>;
+  try {
+    info = await stat(file);
+  } catch {
+    verdicts.delete(spec.name);
+    return "missing";
+  }
+
+  const cached = verdicts.get(spec.name);
+  if (cached && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
+    return cached.state;
+  }
+
+  let state: AssetState = "corrupt";
+  if (info.size === spec.size) {
+    const digest = createHash("sha256").update(await readFile(file)).digest("hex");
+    state = digest === spec.sha256 ? "ok" : "corrupt";
+  }
+
+  if (state === "corrupt") {
+    console.error(
+      `SAP assets: ${spec.name} is ${info.size} bytes and does not match its digest`,
+    );
+  }
+
+  verdicts.set(spec.name, { size: info.size, mtimeMs: info.mtimeMs, state });
+  return state;
+}
+
+/** Verifies every asset, reporting which are usable and which are not. */
+export async function verifyAssets(): Promise<{
+  ok: string[];
+  missing: string[];
+  corrupt: string[];
+}> {
+  const ok: string[] = [];
+  const missing: string[] = [];
+  const corrupt: string[] = [];
+
+  for (const spec of REQUIRED_ASSETS) {
+    const state = await verifyAsset(spec);
+    if (state === "ok") ok.push(spec.name);
+    else if (state === "missing") missing.push(spec.name);
+    else corrupt.push(spec.name);
+  }
+
+  return { ok, missing, corrupt };
 }
 
 async function range(start: number, end?: number): Promise<Response> {
@@ -174,6 +240,19 @@ export async function fetchAssets(
 ): Promise<string[]> {
   const target = assetDirectory();
   await mkdir(target, { recursive: true });
+
+  // Anything already present and verified is left alone; a corrupt file is
+  // replaced rather than skipped, which is the whole point of checking the
+  // digest rather than the size.
+  const existing = await verifyAssets();
+  if (existing.ok.length === REQUIRED_ASSETS.length) {
+    onProgress?.({ stage: "done", found: existing.ok });
+    return existing.ok;
+  }
+
+  if (existing.corrupt.length) {
+    console.warn(`SAP assets: replacing corrupt ${existing.corrupt.join(", ")}`);
+  }
 
   onProgress?.({ stage: "locating", found: [] });
   const payload = await locatePayload();

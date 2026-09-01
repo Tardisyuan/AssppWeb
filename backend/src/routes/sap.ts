@@ -1,9 +1,14 @@
 import express, { Router, Request, Response } from "express";
 import { createReadStream } from "fs";
-import { stat } from "fs/promises";
 import path from "path";
-import { config } from "../config.js";
-import { fetchAssets, type FetchProgress } from "../services/sapAssets.js";
+import {
+  REQUIRED_ASSETS,
+  assetDirectory,
+  fetchAssets,
+  verifyAsset,
+  verifyAssets,
+  type FetchProgress,
+} from "../services/sapAssets.js";
 
 const userAgent =
   "Configurator/2.17 (Macintosh; OS X 15.2; 24C5089c) AppleWebKit/0620.1.16.11.6";
@@ -18,20 +23,6 @@ const userAgent =
 // tools/fetch-sap-assets.mjs.
 
 const router = Router();
-
-// Names and sizes as ipatool's internal/sap/assets records them. The size
-// check is what turns a truncated or wrong file into a clear error here
-// rather than a mysterious emulator fault in the browser.
-const ASSETS: Record<string, number> = {
-  CommerceKit: 3271840,
-  CommerceCore: 207744,
-  CoreFP: 29014912,
-  "CoreFP.icxs": 5288352,
-};
-
-function assetDirectory(): string {
-  return path.join(config.dataDir, "sap");
-}
 
 // One download at a time, with its state readable while it runs, so a second
 // caller watches rather than starting a duplicate.
@@ -69,23 +60,16 @@ router.post("/sap/assets/fetch", (_req: Request, res: Response) => {
 });
 
 router.get("/sap/assets", async (_req: Request, res: Response) => {
-  const available: string[] = [];
-  const missing: string[] = [];
-
-  for (const [name, size] of Object.entries(ASSETS)) {
-    try {
-      const info = await stat(path.join(assetDirectory(), name));
-      if (info.size === size) available.push(name);
-      else missing.push(name);
-    } catch {
-      missing.push(name);
-    }
-  }
+  // Digests, not sizes: a file of the right length but wrong contents loads
+  // and then fails deep inside the emulator with nothing pointing back here.
+  // Verdicts are cached until a file changes, so this is cheap to poll.
+  const { ok, missing, corrupt } = await verifyAssets();
 
   res.json({
-    available,
-    missing,
-    ready: missing.length === 0,
+    available: ok,
+    missing: [...missing, ...corrupt],
+    corrupt,
+    ready: missing.length === 0 && corrupt.length === 0,
     fetching: fetching !== null,
     progress,
     error: lastError,
@@ -96,37 +80,36 @@ router.get("/sap/assets/:name", async (req: Request, res: Response) => {
   // Express 5 types a route parameter as string | string[]; the lookup below
   // is what makes it safe either way.
   const name = String(req.params.name ?? "");
-  const expected = ASSETS[name];
+  const spec = REQUIRED_ASSETS.find((asset) => asset.name === name);
 
   // Only the four known names, so the parameter can never walk the filesystem.
-  if (expected === undefined) {
+  if (!spec) {
     res.status(404).json({ error: "Unknown SAP asset" });
     return;
   }
 
-  const file = path.join(assetDirectory(), name);
+  const state = await verifyAsset(spec);
 
-  let size: number;
-  try {
-    size = (await stat(file)).size;
-  } catch {
+  if (state === "missing") {
     res.status(503).json({
       error: `SAP asset ${name} is not installed`,
-      hint: "run tools/fetch-sap-assets.mjs to populate DATA_DIR/sap",
+      hint: "POST /api/sap/assets/fetch to download it from Apple",
     });
     return;
   }
 
-  if (size !== expected) {
+  if (state === "corrupt") {
     res.status(500).json({
-      error: `SAP asset ${name} is ${size} bytes, expected ${expected}`,
+      error: `SAP asset ${name} does not match its digest`,
+      hint: "POST /api/sap/assets/fetch to replace it",
     });
     return;
   }
 
-  console.log(`SAP assets: serving ${name} (${size} bytes)`);
+  const file = path.join(assetDirectory(), name);
+  console.log(`SAP assets: serving ${name} (${spec.size} bytes)`);
   res.type("application/octet-stream");
-  res.setHeader("Content-Length", String(size));
+  res.setHeader("Content-Length", String(spec.size));
   // Immutable: these are fixed files from a 2013 release.
   res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
   createReadStream(file).pipe(res);
