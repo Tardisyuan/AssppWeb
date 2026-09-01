@@ -50,7 +50,9 @@ router.get("/sap/assets", async (_req: Request, res: Response) => {
 });
 
 router.get("/sap/assets/:name", async (req: Request, res: Response) => {
-  const name = req.params.name;
+  // Express 5 types a route parameter as string | string[]; the lookup below
+  // is what makes it safe either way.
+  const name = String(req.params.name ?? "");
   const expected = ASSETS[name];
 
   // Only the four known names, so the parameter can never walk the filesystem.
@@ -155,7 +157,7 @@ router.post(
     await relay(SETUP_HOSTS.setup, {
       method: "POST",
       headers: { "User-Agent": userAgent, "Content-Type": "application/x-plist" },
-      body: req.body,
+      body: new Uint8Array(req.body),
     }, res);
   },
 );
