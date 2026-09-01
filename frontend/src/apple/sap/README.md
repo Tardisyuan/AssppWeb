@@ -13,14 +13,20 @@ about Apple credentials.
 
 ## Where it stands
 
-The signer works. A full setup against Apple completes and produces a
-signature:
+The signer works, and Apple accepts what it produces. Sending the same
+deliberately wrong credentials with and without a signature separates the two
+cases cleanly:
 
 ```
-GET  https://s.mzstatic.com/sap/setupCert.plist                 HTTP 200
-POST https://fpinit.itunes.apple.com/v1/signSapSetup/legacy     HTTP 200
-signature: 501 bytes
+without signature:  HTTP 403, empty body            rejected at the edge
+with signature:     HTTP 200, 326 bytes, a plist    credentials evaluated
+                    customerMessage: MZFinance.BadLogin.Configurator_message
 ```
+
+That second response is the ordinary "wrong password" answer, which is the
+point: the request got as far as the credential check. Setup itself completes
+against Apple too — the certificate comes from s.mzstatic.com and the setup
+buffer round-trips through fpinit.itunes.apple.com, both HTTP 200.
 
 Setup runs about 5.3 million guest instructions for `initialize` and another
 5 million for the two exchange rounds, and takes roughly 63 seconds. That is
