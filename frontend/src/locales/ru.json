@@ -447,9 +447,11 @@
       "shareAcquired": "Ссылка получена",
       "downloadIpaStarted": "Начало загрузки IPA",
       "deleteSuccess": "Успешное удаление",
-      "downloadLimit": "Превышен лимит размера"
+      "downloadLimit": "Превышен лимит размера",
+      "preparingSigner": "Подготовка подписи"
     },
     "msg": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}",
+    "preparingSigner": "Подготовка компонентов подписи. В первый раз это занимает одну-две минуты — не закрывайте страницу.",
     "msgShare": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\nВы можете использовать AirDrop, чтобы поделиться ею с друзьями.",
     "msgFailed": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\nОшибка: {{error}}",
     "downloadLimit": {

@@ -447,9 +447,11 @@
       "shareAcquired": "連結已獲取",
       "downloadIpaStarted": "開始下載 IPA",
       "deleteSuccess": "刪除成功",
-      "downloadLimit": "檔案大小超限"
+      "downloadLimit": "檔案大小超限",
+      "preparingSigner": "正在準備簽名"
     },
     "msg": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}",
+    "preparingSigner": "正在準備簽名元件，首次約需一到兩分鐘，請勿關閉頁面。",
     "msgShare": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\n您可以使用 Airdrop 分享給您的朋友。",
     "msgFailed": "{{appName}}\n{{userName}} / {{appleId}} - {{country}}\n\n錯誤: {{error}}",
     "downloadLimit": {
