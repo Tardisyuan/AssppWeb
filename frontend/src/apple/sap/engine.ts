@@ -78,6 +78,19 @@ export class Engine {
     this.engine.mem_write(address, new Uint8Array(size));
   }
 
+  /** Reads a general-purpose register by its x86 encoding number, 0 to 15. */
+  gpr(index: number): bigint {
+    const order = [
+      this.uc.X86_REG_RAX, this.uc.X86_REG_RCX, this.uc.X86_REG_RDX,
+      this.uc.X86_REG_RBX, this.uc.X86_REG_RSP, this.uc.X86_REG_RBP,
+      this.uc.X86_REG_RSI, this.uc.X86_REG_RDI, this.uc.X86_REG_R8,
+      this.uc.X86_REG_R9, this.uc.X86_REG_R10, this.uc.X86_REG_R11,
+      this.uc.X86_REG_R12, this.uc.X86_REG_R13, this.uc.X86_REG_R14,
+      this.uc.X86_REG_R15,
+    ];
+    return this.regRead(order[index]);
+  }
+
   regRead(register: number): bigint {
     return BigInt(this.engine.reg_read_i64(register)) & ((1n << 64n) - 1n);
   }

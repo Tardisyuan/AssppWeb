@@ -9,6 +9,7 @@
 // they are looked up by those names rather than anything descriptive.
 
 import { Engine } from "./engine";
+import { type Block, type Decoded, measureBlock } from "./length";
 import { MachImage } from "./macho";
 import { registerPlatformServices } from "./platform";
 import { HEAP_BASE, HEAP_SIZE, Shims, align } from "./shims";
@@ -31,6 +32,15 @@ const MAX_OUTPUT_SIZE = 16n << 20n;
 // limit is the only bound here. It is the tighter of the two in practice.
 const EXECUTION_TIMEOUT_MICROS = 0n;
 const INSTRUCTION_LIMIT = 100_000_000;
+
+// unicorn.js aborts inside QEMU's Tiny Code Interpreter on a basic block of
+// more than about ninety instructions, so long blocks are executed in pieces:
+// a HLT is planted this far ahead of the guest, and execution resumes from
+// there once it stops. Sixty-four leaves margin under the measured limit.
+const MAX_BLOCK_INSTRUCTIONS = 32;
+
+// Enough bytes to decode MAX_BLOCK_INSTRUCTIONS of any encoding.
+const CODE_WINDOW = MAX_BLOCK_INSTRUCTIONS * 15;
 
 const CORE_EXPORT_NAMES = [
   "_WIn9UJ86JKdV4dM",
@@ -321,7 +331,7 @@ export class Machine {
     this.shims.resetFault();
 
     try {
-      this.engine.start(func, RETURN_ADDRESS, EXECUTION_TIMEOUT_MICROS, INSTRUCTION_LIMIT);
+      this.run(func);
     } catch (error) {
       if (this.shims.fault) throw this.shims.fault;
       throw new Error(
@@ -337,6 +347,166 @@ export class Machine {
     }
 
     return this.engine.regRead(this.engine.regRAX);
+  }
+
+  /**
+   * Runs the guest from `start` until it returns to the trampoline, splitting
+   * any basic block that would exceed what unicorn.js can translate.
+   *
+   * The split is transparent to the guest: a HLT replaces one byte, execution
+   * stops on it with RIP at that address, the original byte goes back, and
+   * execution resumes from the same place. Only the emulator notices, and only
+   * by translating a shorter block.
+   */
+  private run(start: bigint): void {
+    let address = start;
+    let budget = INSTRUCTION_LIMIT;
+
+    while (budget > 0) {
+      const block = this.measure(address);
+
+      if (!block) {
+        // Undecodable: let the emulator run unassisted, which is no worse
+        // than not splitting at all.
+        this.segment(address, budget, null);
+        budget = 0;
+      } else if (!block.complete) {
+        // Too long to translate whole. Stop it at the last safe boundary and
+        // resume from there; the guest cannot tell, only the translator can.
+        this.segment(address, block.instructions, address + BigInt(block.end));
+        budget -= block.instructions;
+      } else {
+        // Run the body first, so the terminator executes on its own. Taking
+        // a branch also translates its target, so the target's block has to
+        // be made safe before the branch runs, not after.
+        const body = block.instructions - 1;
+        if (body > 0) {
+          this.segment(address, body, null);
+          budget -= body;
+        }
+
+        const terminator = address + BigInt(block.terminator!.offset);
+        const current = this.engine.regRead(this.engine.regRIP);
+        if (current === RETURN_ADDRESS || this.shims.fault) return;
+        if (body > 0 && current !== terminator) {
+          address = current;
+          continue;
+        }
+
+        this.segment(terminator, 1, this.targetCut(block, address));
+        budget -= 1;
+      }
+
+      let next = this.engine.regRead(this.engine.regRIP);
+      if (next === RETURN_ADDRESS || this.shims.fault) return;
+
+      if (next === address) {
+        // A segment can legitimately stop where it started, for instance when
+        // the split point falls on the instruction about to run and the guard
+        // drops it. Step once unassisted to get past it.
+        this.segment(address, 1, null);
+        budget -= 1;
+
+        next = this.engine.regRead(this.engine.regRIP);
+        if (next === RETURN_ADDRESS || this.shims.fault) return;
+        if (next === address) {
+          throw new Error(`SAP guest made no progress at 0x${address.toString(16)}`);
+        }
+      }
+
+      address = next;
+    }
+
+    throw new Error("SAP guest exceeded its instruction budget");
+  }
+
+  /** Runs `count` instructions from `address`, with `cut` held as a HLT. */
+  private segment(address: bigint, count: number, cut: bigint | null): void {
+    // A tight loop can put the split point on the very branch about to run —
+    // the back edge of a nine-instruction loop lands there whenever the limit
+    // is eight. Overwriting it would leave the tail of that branch stranded as
+    // its own instruction, so leave short blocks unsplit instead.
+    if (cut !== null && cut >= address && cut < address + 16n) {
+      cut = null;
+    }
+
+    let original = 0;
+    if (cut !== null) {
+      original = this.engine.memRead(cut, 1)[0];
+      this.engine.memWrite(cut, new Uint8Array([0xf4]));
+    }
+
+    try {
+      this.engine.start(address, RETURN_ADDRESS, EXECUTION_TIMEOUT_MICROS, count);
+    } finally {
+      if (cut !== null) this.engine.memWrite(cut, new Uint8Array([original]));
+    }
+  }
+
+  /**
+   * Where to plant a HLT so the block a terminator jumps into is safe to
+   * translate, or null when the target is unknown or already short.
+   *
+   * Direct branches carry their displacement; a return reads its target off
+   * the stack. Indirect branches would need the effective address evaluated,
+   * so they go unhandled and rely on their target being short.
+   */
+  private targetCut(block: Block, base: bigint): bigint | null {
+    const { offset, decoded } = block.terminator!;
+    const address = base + BigInt(offset);
+
+    let target: bigint;
+    try {
+      if (decoded.relative !== undefined) {
+        target = address + BigInt(decoded.length + decoded.relative);
+      } else if (decoded.indirect) {
+        const resolved = this.indirectTarget(decoded, address);
+        if (resolved === null) return null;
+        target = resolved;
+      } else if (this.engine.memRead(address, 1)[0] === 0xc3) {
+        target = this.engine.readUint64(this.engine.regRead(this.engine.regRSP));
+      } else {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+
+    const measured = this.measure(target);
+    return measured && !measured.complete ? target + BigInt(measured.end) : null;
+  }
+
+  /** Evaluates the destination of an indirect call or jump. */
+  private indirectTarget(decoded: Decoded, address: bigint): bigint | null {
+    const form = decoded.indirect!;
+    if (form.register !== null) return this.engine.gpr(form.register);
+
+    let effective = BigInt(form.displacement);
+
+    if (form.ripRelative) {
+      effective += address + BigInt(decoded.length);
+    } else {
+      if (form.base !== null) effective += this.engine.gpr(form.base);
+      if (form.index !== null) {
+        effective += this.engine.gpr(form.index) * BigInt(form.scale);
+      }
+    }
+
+    return this.engine.readUint64(effective & ((1n << 64n) - 1n));
+  }
+
+  /**
+   * Measures the block at `address`, or null when its code cannot be read or
+   * decoded — in which case the caller falls back to letting the emulator run
+   * unassisted, which is no worse than not splitting at all.
+   */
+  private measure(address: bigint): Block | null {
+    try {
+      const window = this.engine.memRead(address, CODE_WINDOW);
+      return measureBlock(window, 0, MAX_BLOCK_INSTRUCTIONS);
+    } catch {
+      return null;
+    }
   }
 
   private beginCall(): void {
