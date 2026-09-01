@@ -18,6 +18,8 @@ export type SetupProgress =
   | { phase: "setup" }
   | { phase: "signing" };
 
+const SETUP_TIMEOUT_MS = 15 * 60 * 1000;
+
 let worker: Worker | null = null;
 let ready: Promise<void> | null = null;
 let nextId = 1;
@@ -94,8 +96,26 @@ export function prepareSigner(
     reset(new Error(event.message || "SAP signer worker failed"));
   };
 
+  // Without this a worker that wedges — a stalled fetch, an emulator that
+  // never returns — leaves the caller waiting forever with nothing on screen
+  // and no request ever going out. Generous, because a cold deployment has to
+  // fetch 38 MB from Apple before it can even start.
   ready = new Promise<void>((resolve, reject) => {
-    settleSetup = { resolve, reject };
+    const timer = setTimeout(() => {
+      reject(new Error("timed out preparing the SAP signer"));
+      reset(new Error("timed out preparing the SAP signer"));
+    }, SETUP_TIMEOUT_MS);
+
+    settleSetup = {
+      resolve: () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      reject: (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    };
   });
 
   const request: WorkerRequest = {
