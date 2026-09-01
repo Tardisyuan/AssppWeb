@@ -109,6 +109,7 @@
       "signIn": "サインイン",
       "preparingAssets": "署名コンポーネントを準備中 {{percent}}%",
       "preparingSigner": "署名機能を初期化しています。1分ほどかかります…",
+      "signingRequest": "リクエストに署名しています…",
       "verify": "確認",
       "cancel": "キャンセル",
       "authFailed": "認証に失敗しました",

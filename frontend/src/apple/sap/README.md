@@ -28,17 +28,30 @@ point: the request got as far as the credential check. Setup itself completes
 against Apple too — the certificate comes from s.mzstatic.com and the setup
 buffer round-trips through fpinit.itunes.apple.com, both HTTP 200.
 
-Setup runs about 5.3 million guest instructions for `initialize` and another
-5 million for the two exchange rounds, and takes roughly 63 seconds. That is
-slow enough to need a Web Worker and a progress indicator, and it is the main
-thing left before this is usable in the UI.
+It is slow. Measured end to end in Chrome, driving the worker the way sign-in
+does:
+
+```
+assets      35 ms   (local disk; ~38 MB over the network on a cold cache)
+setup      115 s    5.3M guest instructions for initialize, ~5M for the
+                    two exchange rounds
+signing     12 s    per signature
+```
+
+Node runs the same setup in 63 s, so the browser is roughly twice as slow.
+Setup happens once per session and a signature once per sign-in attempt, so a
+first sign-in costs a little over two minutes. Both run in a Web Worker and
+both report progress; neither is fast enough to go quiet.
 
 Nothing in setup involves credentials. The only identity is the hardware id,
 which is the same guid the client already sends in the clear, so the setup can
 happen well before anyone types a password.
 
-Still to do: wire it into `authenticate.ts` behind a Web Worker, and find out
-whether it fits in mobile Safari's memory.
+Memory could not be measured directly — `measureUserAgentSpecificMemory`
+needs cross-origin isolation, which this app does not have — but the guest
+mapping is 144 MB and the assets another 38, so the worker's footprint is on
+the order of 200 MB. Desktop is untroubled by that. Mobile Safari is the open
+question, and the only way to answer it is to try.
 
 ## The block splitter
 

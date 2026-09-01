@@ -39,15 +39,19 @@ export default function AddAccountForm() {
         undefined,
         cleanedDeviceId,
         (update) => {
-          setProgress(
-            update.phase === "assets"
-              ? t("accounts.addForm.preparingAssets", {
-                  percent: update.asset.total
-                    ? Math.round((update.asset.loaded / update.asset.total) * 100)
-                    : 0,
-                })
-              : t("accounts.addForm.preparingSigner"),
-          );
+          if (update.phase === "assets") {
+            setProgress(
+              t("accounts.addForm.preparingAssets", {
+                percent: update.asset.total
+                  ? Math.round((update.asset.loaded / update.asset.total) * 100)
+                  : 0,
+              }),
+            );
+          } else if (update.phase === "setup") {
+            setProgress(t("accounts.addForm.preparingSigner"));
+          } else {
+            setProgress(t("accounts.addForm.signingRequest"));
+          }
         },
       );
       await addAccount(account);

@@ -1,18 +1,22 @@
 // Main-thread handle on the SAP signer worker.
 //
 // Apple began requiring a SAP signature on authenticate in August 2026, and
-// producing one means emulating Apple's own signing code. Setup is slow and
-// happens once per session; signing afterwards is quick.
+// producing one means emulating Apple's own signing code. Measured in Chrome
+// on a laptop: setup takes about 115 seconds and each signature about 12.
+// Setup happens once per session, a signature once per sign-in attempt, and
+// both are slow enough to need saying so on screen.
 //
 // The signer is created lazily, so a session that never signs in never pays
 // for it, and the assets are only fetched when they are about to be used.
 
+import { getAccessToken } from "../../components/Auth/PasswordGate";
 import type { AssetProgress } from "./assets";
 import type { WorkerRequest, WorkerResponse } from "./worker";
 
 export type SetupProgress =
   | { phase: "assets"; asset: AssetProgress }
-  | { phase: "setup" };
+  | { phase: "setup" }
+  | { phase: "signing" };
 
 let worker: Worker | null = null;
 let ready: Promise<void> | null = null;
@@ -94,7 +98,12 @@ export function prepareSigner(
     settleSetup = { resolve, reject };
   });
 
-  const request: WorkerRequest = { type: "setup", hardwareID: hexToBytes(hardwareID) };
+  const request: WorkerRequest = {
+    type: "setup",
+    hardwareID: hexToBytes(hardwareID),
+    // sessionStorage exists only here, not in the worker.
+    accessToken: getAccessToken(),
+  };
   worker.postMessage(request);
 
   return ready;

@@ -7,7 +7,7 @@
 //
 // Once setup completes, signing is entirely local.
 
-import { buildPlist, parsePlist } from "../plist";
+import { buildPlist } from "../plist";
 import { Machine, type AssetBundle } from "./machine";
 
 const SETUP_CERTIFICATE_KEY = "sign-sap-setup-cert";
@@ -46,6 +46,13 @@ function validate(config: SapConfig): void {
   if (config.hardwareID.length === 0 || config.hardwareID.length > 20) {
     throw new Error("SAP hardware ID must contain between 1 and 20 bytes");
   }
+  // The endpoints come from the bag, so they are checked rather than trusted.
+  // Our own origin is allowed whatever scheme it is served over, since these
+  // requests are proxied through it and a plain-http origin is a development
+  // setup, not a downgrade of an Apple endpoint.
+  const origin =
+    typeof self !== "undefined" && self.location ? self.location.origin : null;
+
   for (const [label, value] of [
     ["setup", config.setupURL],
     ["certificate", config.certificateURL],
@@ -54,27 +61,46 @@ function validate(config: SapConfig): void {
     try {
       url = new URL(value);
     } catch {
-      throw new Error(`SAP ${label} URL must be an absolute HTTPS URL`);
+      throw new Error(`SAP ${label} URL must be absolute`);
     }
-    if (url.protocol !== "https:" || !url.host || url.username) {
-      throw new Error(`SAP ${label} URL must be an absolute HTTPS URL`);
+    if (!url.host || url.username) {
+      throw new Error(`SAP ${label} URL must be absolute`);
+    }
+    if (url.protocol !== "https:" && url.origin !== origin) {
+      throw new Error(`SAP ${label} URL must use HTTPS`);
     }
   }
 }
 
-/** Pulls one data value out of an Apple plist, rejecting anything else. */
+/**
+ * Pulls one data value out of an Apple plist.
+ *
+ * plist.ts parses with DOMParser, which a worker does not have, and the setup
+ * plists are a single key holding a single base64 blob — so this reads that
+ * shape directly rather than pulling in an XML parser.
+ */
 function plistBytes(document: Uint8Array, key: string): Uint8Array {
   if (document.length > MAX_SETUP_BODY) {
     throw new Error(`Apple response exceeds ${MAX_SETUP_BODY} bytes`);
   }
 
-  const parsed = parsePlist(new TextDecoder().decode(document));
-  const value = parsed?.[key];
-  if (!(value instanceof Uint8Array) || value.length === 0) {
-    throw new Error(`Apple plist is missing ${key}`);
+  const xml = new TextDecoder().decode(document);
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(
+    `<key>\\s*${escaped}\\s*</key>\\s*<data>([\\s\\S]*?)</data>`,
+  ).exec(xml);
+
+  if (!match) throw new Error(`Apple plist is missing ${key}`);
+
+  const binary = atob(match[1].replace(/\s+/g, ""));
+  if (binary.length === 0) throw new Error(`Apple plist is missing ${key}`);
+
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
   }
 
-  return value;
+  return bytes;
 }
 
 export class Signer {

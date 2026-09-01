@@ -109,6 +109,7 @@
       "signIn": "登录",
       "preparingAssets": "正在准备签名组件 {{percent}}%",
       "preparingSigner": "正在初始化签名器，约需一分钟…",
+      "signingRequest": "正在签名请求…",
       "verify": "验证",
       "cancel": "取消",
       "authFailed": "认证失败",

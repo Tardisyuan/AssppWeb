@@ -109,6 +109,7 @@
       "signIn": "로그인",
       "preparingAssets": "서명 구성요소 준비 중 {{percent}}%",
       "preparingSigner": "서명기를 초기화하는 중입니다. 1분 정도 걸립니다…",
+      "signingRequest": "요청에 서명하는 중…",
       "verify": "확인",
       "cancel": "취소",
       "authFailed": "인증 실패",

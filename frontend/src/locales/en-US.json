@@ -109,6 +109,7 @@
       "signIn": "Sign In",
       "preparingAssets": "Preparing signing components {{percent}}%",
       "preparingSigner": "Setting up the signer, this takes about a minute…",
+      "signingRequest": "Signing the request…",
       "verify": "Verify",
       "cancel": "Cancel",
       "authFailed": "Authentication failed",

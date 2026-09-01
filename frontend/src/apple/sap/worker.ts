@@ -1,15 +1,16 @@
 /// <reference lib="webworker" />
 // The SAP signer, off the main thread.
 //
-// Setting one up runs about ten million emulated instructions and takes the
-// better part of a minute, which would freeze the tab. Signing afterwards is
-// fast, so the worker is set up once and kept for the session.
+// Setting one up runs about ten million emulated instructions, and signing
+// runs a few million more: roughly 115 seconds and 12 seconds respectively in
+// Chrome on a laptop. Both would freeze the tab, so both happen here, and the
+// worker is set up once and kept for the session.
 
 import { loadAssets, type AssetProgress } from "./assets";
 import { Signer, type Transport } from "./signer";
 
 export type WorkerRequest =
-  | { type: "setup"; hardwareID: Uint8Array }
+  | { type: "setup"; hardwareID: Uint8Array; accessToken: string | null }
   | { type: "sign"; id: number; payload: Uint8Array };
 
 export type WorkerResponse =
@@ -21,11 +22,18 @@ export type WorkerResponse =
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 
+// A worker has no sessionStorage, so the access token comes in with the
+// setup request rather than being read here.
+let accessHeaders: Record<string, string> = {};
+
 // The setup endpoints are proxied by the backend; nothing here is secret.
 const transport: Transport = async ({ method, url, body }) => {
   const response = await fetch(url, {
     method,
-    headers: method === "POST" ? { "Content-Type": "application/x-plist" } : {},
+    headers: {
+      ...accessHeaders,
+      ...(method === "POST" ? { "Content-Type": "application/x-plist" } : {}),
+    },
     body: body ? new Blob([body as BlobPart]) : undefined,
   });
 
@@ -44,7 +52,7 @@ function post(message: WorkerResponse, transfer?: Transferable[]) {
 }
 
 async function setup(hardwareID: Uint8Array) {
-  const bundle = await loadAssets((asset) => {
+  const bundle = await loadAssets(accessHeaders, (asset) => {
     post({ type: "progress", phase: "assets", asset });
   });
 
@@ -75,6 +83,9 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         post({ type: "ready" });
         return;
       }
+      accessHeaders = request.accessToken
+        ? { "X-Access-Token": request.accessToken }
+        : {};
       await setup(request.hardwareID);
       return;
     }

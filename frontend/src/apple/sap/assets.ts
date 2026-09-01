@@ -4,7 +4,6 @@
 // release — so they are cached and reused. The backend serves them from
 // DATA_DIR/sap; see tools/fetch-sap-assets.mjs for populating it.
 
-import { authHeaders } from "../../api/client";
 import type { AssetBundle } from "./machine";
 
 const CACHE_NAME = "sap-assets-v2";
@@ -23,9 +22,11 @@ export interface AssetProgress {
 }
 
 /** Reports whether the backend has the assets, without downloading them. */
-export async function assetsReady(): Promise<boolean> {
+export async function assetsReady(
+  headers: Record<string, string> = {},
+): Promise<boolean> {
   try {
-    const response = await fetch("/api/sap/assets", { headers: authHeaders() });
+    const response = await fetch("/api/sap/assets", { headers });
     if (!response.ok) return false;
     return Boolean((await response.json()).ready);
   } catch {
@@ -35,6 +36,7 @@ export async function assetsReady(): Promise<boolean> {
 
 async function fetchAsset(
   name: string,
+  headers: Record<string, string>,
   onProgress?: (progress: AssetProgress) => void,
 ): Promise<Uint8Array> {
   const url = `/api/sap/assets/${name}`;
@@ -54,7 +56,7 @@ async function fetchAsset(
     cache = null;
   }
 
-  const response = await fetch(url, { headers: authHeaders() });
+  const response = await fetch(url, { headers });
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
     throw new Error(detail.error ?? `failed to fetch SAP asset ${name}`);
@@ -94,11 +96,12 @@ async function fetchAsset(
 }
 
 export async function loadAssets(
+  headers: Record<string, string> = {},
   onProgress?: (progress: AssetProgress) => void,
 ): Promise<AssetBundle> {
   const entries = await Promise.all(
     Object.entries(FILES).map(async ([key, name]) => {
-      return [key, await fetchAsset(name, onProgress)] as const;
+      return [key, await fetchAsset(name, headers, onProgress)] as const;
     }),
   );
 

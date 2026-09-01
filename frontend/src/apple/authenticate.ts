@@ -70,6 +70,8 @@ export async function authenticate(
 
       const plistBody = buildPlist(body);
 
+      // Signing takes about twelve seconds, so say so rather than going quiet.
+      onProgress?.({ phase: "signing" });
       const signature = await signAction(new TextEncoder().encode(plistBody));
 
       const headers: Record<string, string> = {
