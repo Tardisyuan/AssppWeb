@@ -421,7 +421,7 @@
     "purchase": {
       "paidNotSupported": "有料アプリの購入はサポートされていません",
       "unavailable": "項目は一時的に利用できません",
-      "reauthUnavailable": "ライセンスの取得には再サインインが必要ですが、現在 Apple がこのアカウントに対して制限しています。代わりに ipatool をご利用ください: ipatool purchase -b {{bundleID}}。完了後、このページに戻るとダウンロードできます。",
+      "reauthRequired": "ライセンスの取得には新しいトークンが必要です。アカウントに再度サインインしてお試しください。それでも失敗する場合は ipatool purchase -b {{bundleID}} をご利用ください。",
       "subscriptionRequired": "サブスクリプションが必要です",
       "termsRequired": "利用規約に同意する必要があります: {{url}}",
       "failed": "購入失敗: {{failureType}}",

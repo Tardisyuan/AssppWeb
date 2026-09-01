@@ -421,7 +421,7 @@
     "purchase": {
       "paidNotSupported": "不支持购买付费应用",
       "unavailable": "项目暂时不可用",
-      "reauthUnavailable": "获取许可证需要重新登录，但 Apple 目前对该账号的登录接口有限制。请改用 ipatool 获取许可证：ipatool purchase -b {{bundleID}}，完成后回到本页面即可下载。",
+      "reauthRequired": "获取许可证需要新的登录令牌。请在账号页面重新登录该账号后再试；若仍失败，可用 ipatool purchase -b {{bundleID}} 获取。",
       "subscriptionRequired": "需要订阅",
       "termsRequired": "您必须接受条款与条件：{{url}}",
       "failed": "购买失败：{{failureType}}",

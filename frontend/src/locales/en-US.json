@@ -421,7 +421,7 @@
     "purchase": {
       "paidNotSupported": "Purchasing paid apps is not supported",
       "unavailable": "Item is temporarily unavailable",
-      "reauthUnavailable": "Acquiring a license requires signing in again, which Apple currently blocks for this account. Use ipatool instead: ipatool purchase -b {{bundleID}}, then return here to download.",
+      "reauthRequired": "Acquiring a licence needs a freshly issued token. Sign in to this account again and retry; if that still fails, ipatool purchase -b {{bundleID}} will do it.",
       "subscriptionRequired": "Subscription required",
       "termsRequired": "You must accept the Terms & Conditions: {{url}}",
       "failed": "Purchase failed: {{failureType}}",

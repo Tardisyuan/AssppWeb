@@ -44,11 +44,17 @@ router.post("/sap/assets/fetch", (_req: Request, res: Response) => {
     lastError = null;
     progress = { stage: "locating", found: [] };
 
+    console.log("SAP assets: fetching from Apple");
     fetching = fetchAssets((update) => {
       progress = update;
+      console.log(
+        `SAP assets: ${update.stage}` +
+          (update.found.length ? ` (${update.found.join(", ")})` : ""),
+      );
     })
       .catch((error) => {
         lastError = error instanceof Error ? error.message : String(error);
+        console.error("SAP assets: fetch failed:", lastError);
         throw error;
       })
       .finally(() => {
@@ -118,6 +124,7 @@ router.get("/sap/assets/:name", async (req: Request, res: Response) => {
     return;
   }
 
+  console.log(`SAP assets: serving ${name} (${size} bytes)`);
   res.type("application/octet-stream");
   res.setHeader("Content-Length", String(size));
   // Immutable: these are fixed files from a 2013 release.
@@ -177,6 +184,7 @@ async function relay(
 }
 
 router.get("/sap/certificate", async (_req: Request, res: Response) => {
+  console.log("SAP setup: fetching Apple's certificate");
   await relay(SETUP_HOSTS.certificate, {
     headers: { "User-Agent": userAgent, Accept: "application/x-plist" },
   }, res);
@@ -191,6 +199,7 @@ router.post(
       return;
     }
 
+    console.log(`SAP setup: exchanging ${req.body.length} bytes with Apple`);
     await relay(SETUP_HOSTS.setup, {
       method: "POST",
       headers: { "User-Agent": userAgent, "Content-Type": "application/x-plist" },

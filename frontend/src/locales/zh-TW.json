@@ -421,7 +421,7 @@
     "purchase": {
       "paidNotSupported": "不支援購買付費應用程式",
       "unavailable": "項目暫時無法使用",
-      "reauthUnavailable": "取得授權需要重新登入，但 Apple 目前對該帳號的登入介面有限制。請改用 ipatool 取得授權：ipatool purchase -b {{bundleID}}，完成後回到本頁面即可下載。",
+      "reauthRequired": "取得授權需要新的登入權杖。請在帳號頁面重新登入該帳號後再試；若仍失敗，可用 ipatool purchase -b {{bundleID}} 取得。",
       "subscriptionRequired": "需要訂閱",
       "termsRequired": "您必須接受條款與約定：{{url}}",
       "failed": "購買失敗：{{failureType}}",

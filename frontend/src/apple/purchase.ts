@@ -92,14 +92,17 @@ async function purchaseWithParams(
         throw new PurchaseError(i18n.t("errors.purchase.unavailable"), "2059");
       // buyProduct needs a freshly issued passwordToken. Apple reports a stale
       // one as 2034/2042 or as "Your password has changed." — all three mean
-      // "sign in again", not "the password is wrong". Renewing the token needs
-      // the authenticate endpoint, which Apple now gates behind a SAP
-      // signature this client cannot produce, so point at the workaround
-      // instead of blaming the stored credentials.
+      // "sign in again", not "the password is wrong", so say that rather than
+      // blaming the stored credentials.
+      //
+      // Signing in again is now possible: the SAP signature Apple requires is
+      // produced in the browser. An account imported as a token bundle has no
+      // password to renew against, though, so it has to be signed in properly
+      // once before licences can be acquired with it.
       case "2034":
       case "2042":
         throw new PurchaseError(
-          i18n.t("errors.purchase.reauthUnavailable", {
+          i18n.t("errors.purchase.reauthRequired", {
             bundleID: app.bundleID,
           }),
           failureType,
@@ -107,7 +110,7 @@ async function purchaseWithParams(
       default: {
         if (customerMessage === "Your password has changed.") {
           throw new PurchaseError(
-            i18n.t("errors.purchase.reauthUnavailable", {
+            i18n.t("errors.purchase.reauthRequired", {
               bundleID: app.bundleID,
             }),
             failureType,
