@@ -107,6 +107,8 @@
       "codePlaceholder": "000000",
       "codeHelp": "輸入來自您受信任裝置的驗證碼。",
       "signIn": "登入",
+      "preparingAssets": "正在準備簽名元件 {{percent}}%",
+      "preparingSigner": "正在初始化簽名器，約需一分鐘…",
       "verify": "驗證",
       "cancel": "取消",
       "authFailed": "認證失敗",

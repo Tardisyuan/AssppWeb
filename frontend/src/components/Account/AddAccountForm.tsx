@@ -21,6 +21,8 @@ export default function AddAccountForm() {
   const [deviceId, setDeviceId] = useState(() => generateDeviceId());
   const [needsCode, setNeedsCode] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Preparing the SAP signer takes about a minute, so say what it is doing.
+  const [progress, setProgress] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,6 +38,17 @@ export default function AddAccountForm() {
         needsCode && code ? code : undefined,
         undefined,
         cleanedDeviceId,
+        (update) => {
+          setProgress(
+            update.phase === "assets"
+              ? t("accounts.addForm.preparingAssets", {
+                  percent: update.asset.total
+                    ? Math.round((update.asset.loaded / update.asset.total) * 100)
+                    : 0,
+                })
+              : t("accounts.addForm.preparingSigner"),
+          );
+        },
       );
       await addAccount(account);
       addToast(t("accounts.addForm.addSuccess"), "success");
@@ -52,6 +65,7 @@ export default function AddAccountForm() {
       }
     } finally {
       setLoading(false);
+      setProgress("");
     }
   }
 
@@ -175,6 +189,11 @@ export default function AddAccountForm() {
             >
               {t("accounts.addForm.cancel")}
             </button>
+            {progress && (
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                {progress}
+              </span>
+            )}
           </div>
         </form>
       </div>

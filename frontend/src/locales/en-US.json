@@ -107,6 +107,8 @@
       "codePlaceholder": "000000",
       "codeHelp": "Enter the verification code from your trusted device.",
       "signIn": "Sign In",
+      "preparingAssets": "Preparing signing components {{percent}}%",
+      "preparingSigner": "Setting up the signer, this takes about a minute…",
       "verify": "Verify",
       "cancel": "Cancel",
       "authFailed": "Authentication failed",
