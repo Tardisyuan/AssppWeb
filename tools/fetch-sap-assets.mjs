@@ -2,11 +2,10 @@
 // Populates DATA_DIR/sap with the four Apple binaries the browser-side SAP
 // signer runs under emulation.
 //
-// They live in a 2013 OS X update package, and ipatool extracts them with a
-// ranged read into a bzip2 stream at a fixed offset. Reimplementing that is
-// only worth doing once the copy path stops covering the common case, so for
-// now this copies from an existing ipatool cache and otherwise explains what
-// to do.
+// The backend fetches these from Apple on its own the first time the signer
+// asks for them, so this script is only a shortcut: if ipatool has already
+// cached them on this machine, copying is faster than downloading 38 MB out
+// of a 2013 update package again.
 //
 // The files carry no credentials and are identical for everyone; they are
 // kept out of the image because they are large and belong to Apple.
@@ -113,11 +112,10 @@ async function main() {
   }
 
   console.error(`\nmissing: ${missing.join(", ")}`);
-  console.error(`\nThey were not found in ${source}.`);
-  console.error("Run any ipatool 2.4.0 command that signs in once — it downloads");
-  console.error("and caches them — then run this again. On a server without");
-  console.error("ipatool, copy the four files there from a machine that has them.");
-  process.exitCode = 1;
+  console.error(`\nThey were not found in ${source}, which is fine — the`);
+  console.error("backend downloads them from Apple the first time the signer");
+  console.error("runs. This script only saves that download when ipatool has");
+  console.error("already cached them here.");
 }
 
 main().catch((error) => {

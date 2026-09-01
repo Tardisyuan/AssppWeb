@@ -1,8 +1,9 @@
 // Fetches the Apple binaries the SAP signer runs under emulation.
 //
 // They total about 38 MB and never change — they come from a 2013 OS X
-// release — so they are cached and reused. The backend serves them from
-// DATA_DIR/sap; see tools/fetch-sap-assets.mjs for populating it.
+// release — so they are cached and reused. The backend serves them from its
+// data directory, and fetches them from Apple the first time they are asked
+// for, so a fresh deployment needs nothing done to it by hand.
 
 import type { AssetBundle } from "./machine";
 
@@ -19,6 +20,67 @@ export interface AssetProgress {
   name: string;
   loaded: number;
   total: number;
+}
+
+interface AssetStatus {
+  ready: boolean;
+  fetching: boolean;
+  missing: string[];
+  progress: { stage: string; found: string[] } | null;
+  error: string | null;
+}
+
+const FETCH_POLL_MS = 3000;
+const FETCH_TIMEOUT_MS = 10 * 60 * 1000;
+
+async function status(headers: Record<string, string>): Promise<AssetStatus> {
+  const response = await fetch("/api/sap/assets", { headers });
+  if (!response.ok) throw new Error("cannot reach the SAP asset service");
+  return response.json();
+}
+
+/**
+ * Makes sure the backend has the assets, asking it to fetch them from Apple
+ * if not. They land in its data directory and stay there, so this is a
+ * one-off on a fresh deployment rather than something every visitor pays.
+ */
+async function ensureInstalled(
+  headers: Record<string, string>,
+  onProgress?: (progress: AssetProgress) => void,
+): Promise<void> {
+  let state = await status(headers);
+  if (state.ready) return;
+
+  if (!state.fetching) {
+    const response = await fetch("/api/sap/assets/fetch", {
+      method: "POST",
+      headers,
+    });
+    if (!response.ok) {
+      throw new Error("the server could not start fetching the SAP assets");
+    }
+  }
+
+  const deadline = Date.now() + FETCH_TIMEOUT_MS;
+  for (;;) {
+    if (Date.now() > deadline) {
+      throw new Error("timed out waiting for the server to fetch the SAP assets");
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, FETCH_POLL_MS));
+    state = await status(headers);
+
+    if (state.ready) return;
+    if (state.error) throw new Error(state.error);
+
+    // Report as an asset-shaped step so the caller has one progress channel.
+    const found = state.progress?.found.length ?? 0;
+    onProgress?.({
+      name: state.progress?.stage ?? "server",
+      loaded: found,
+      total: 4,
+    });
+  }
 }
 
 /** Reports whether the backend has the assets, without downloading them. */
@@ -99,6 +161,8 @@ export async function loadAssets(
   headers: Record<string, string> = {},
   onProgress?: (progress: AssetProgress) => void,
 ): Promise<AssetBundle> {
+  await ensureInstalled(headers, onProgress);
+
   const entries = await Promise.all(
     Object.entries(FILES).map(async ([key, name]) => {
       return [key, await fetchAsset(name, headers, onProgress)] as const;

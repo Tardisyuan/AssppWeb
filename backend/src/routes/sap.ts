@@ -3,6 +3,7 @@ import { createReadStream } from "fs";
 import { stat } from "fs/promises";
 import path from "path";
 import { config } from "../config.js";
+import { fetchAssets, type FetchProgress } from "../services/sapAssets.js";
 
 const userAgent =
   "Configurator/2.17 (Macintosh; OS X 15.2; 24C5089c) AppleWebKit/0620.1.16.11.6";
@@ -32,6 +33,35 @@ function assetDirectory(): string {
   return path.join(config.dataDir, "sap");
 }
 
+// One download at a time, with its state readable while it runs, so a second
+// caller watches rather than starting a duplicate.
+let fetching: Promise<string[]> | null = null;
+let progress: FetchProgress | null = null;
+let lastError: string | null = null;
+
+router.post("/sap/assets/fetch", (_req: Request, res: Response) => {
+  if (!fetching) {
+    lastError = null;
+    progress = { stage: "locating", found: [] };
+
+    fetching = fetchAssets((update) => {
+      progress = update;
+    })
+      .catch((error) => {
+        lastError = error instanceof Error ? error.message : String(error);
+        throw error;
+      })
+      .finally(() => {
+        fetching = null;
+      });
+
+    // Answered immediately; the caller polls GET for how it is going.
+    fetching.catch(() => {});
+  }
+
+  res.status(202).json({ started: true, progress });
+});
+
 router.get("/sap/assets", async (_req: Request, res: Response) => {
   const available: string[] = [];
   const missing: string[] = [];
@@ -46,7 +76,14 @@ router.get("/sap/assets", async (_req: Request, res: Response) => {
     }
   }
 
-  res.json({ available, missing, ready: missing.length === 0 });
+  res.json({
+    available,
+    missing,
+    ready: missing.length === 0,
+    fetching: fetching !== null,
+    progress,
+    error: lastError,
+  });
 });
 
 router.get("/sap/assets/:name", async (req: Request, res: Response) => {

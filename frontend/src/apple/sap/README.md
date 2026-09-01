@@ -11,6 +11,10 @@ release under a CPU emulator. This is a port of that approach to the browser,
 so the signature is produced client-side and the server keeps knowing nothing
 about Apple credentials.
 
+The binaries it runs are fetched from Apple's software update CDN the first
+time anyone signs in, and kept in the backend's data directory afterwards, so
+a fresh deployment needs nothing done to it by hand.
+
 ## Where it stands
 
 The signer works, and Apple accepts what it produces. Sending the same
