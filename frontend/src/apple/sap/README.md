@@ -38,20 +38,36 @@ setup      115 s    5.3M guest instructions for initialize, ~5M for the
 signing     12 s    per signature
 ```
 
-Node runs the same setup in 63 s, so the browser is roughly twice as slow.
-Setup happens once per session and a signature once per sign-in attempt, so a
-first sign-in costs a little over two minutes. Both run in a Web Worker and
-both report progress; neither is fast enough to go quiet.
+Node runs the same setup in 63 s, so Chrome is roughly twice as slow. WebKit
+is much faster than either — 35 s for setup and 3.5 s per signature, measured
+with Playwright's WebKit under an iPhone 15 profile — so Safari users get a
+first sign-in in about forty seconds where Chrome users wait two minutes.
+
+Setup happens once per session and a signature once per sign-in attempt. Both
+run in a Web Worker and both report progress; neither is fast enough anywhere
+to go quiet.
 
 Nothing in setup involves credentials. The only identity is the hardware id,
 which is the same guid the client already sends in the clear, so the setup can
 happen well before anyone types a password.
 
-Memory could not be measured directly — `measureUserAgentSpecificMemory`
-needs cross-origin isolation, which this app does not have — but the guest
-mapping is 144 MB and the assets another 38, so the worker's footprint is on
-the order of 200 MB. Desktop is untroubled by that. Mobile Safari is the open
-question, and the only way to answer it is to try.
+It runs on WebKit, which is what matters for iOS. `tools/webkit-check.mjs`
+drives the signer through Playwright's WebKit under an iPhone 15 profile and
+gets a 501-byte signature, with WebAssembly, dedicated workers, the Cache API
+and BigInt all behaving:
+
+```
+capability: webassembly ✓  worker ✓  caches ✓  bigint ✓
+setup 34.9 s, signing 3.5 s, signature 501 bytes
+```
+
+What that does not settle is memory on an actual phone. Measuring the
+worker's footprint directly needs `measureUserAgentSpecificMemory` and so
+cross-origin isolation, which this app does not have, but the guest mapping
+is 144 MB and the assets another 38, so it is on the order of 200 MB. A
+desktop WebKit has far more headroom than an iPhone, so the remaining risk is
+a device killing the tab under memory pressure — which only a real device can
+answer.
 
 ## The block splitter
 
