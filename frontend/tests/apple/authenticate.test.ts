@@ -133,4 +133,80 @@ describe("apple/authenticate", () => {
     expect(renewed.store).toBe("143441");
     expect(renewed.pod).toBe("25");
   });
+
+  function okBody() {
+    return buildPlist({
+      accountInfo: {
+        appleId: "test@example.com",
+        address: { firstName: "Test", lastName: "User" },
+      },
+      passwordToken: "token",
+      dsPersonId: "123",
+    });
+  }
+
+  function reply(status: number, body: string, headers: Record<string, string> = {}) {
+    return { status, statusText: "", headers, rawHeaders: [], body };
+  }
+
+  // Apple answers this endpoint with 204, 404, 429 or a 5xx at random, so a
+  // single bad status must not end the attempt.
+  it("retries a transient status and succeeds on the next attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchBag).mockResolvedValue({
+        authURL:
+          "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate",
+      });
+      vi.mocked(appleRequest)
+        .mockResolvedValueOnce(reply(204, ""))
+        .mockResolvedValueOnce(reply(200, okBody()));
+
+      const pending = authenticate(
+        "test@example.com",
+        "password",
+        undefined,
+        undefined,
+        "aabbccddeeff",
+      );
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      const account = await pending;
+
+      expect(account.passwordToken).toBe("token");
+      expect(vi.mocked(appleRequest)).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up after three transient statuses and names them", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchBag).mockResolvedValue({
+        authURL:
+          "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate",
+      });
+      vi.mocked(appleRequest)
+        .mockResolvedValueOnce(reply(204, ""))
+        .mockResolvedValueOnce(reply(503, ""))
+        .mockResolvedValueOnce(reply(404, ""));
+
+      const pending = authenticate(
+        "test@example.com",
+        "password",
+        undefined,
+        undefined,
+        "aabbccddeeff",
+      ).catch((error: Error) => error);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      const error = (await pending) as Error;
+
+      expect(error.message).toContain("204, 503, 404");
+      expect(vi.mocked(appleRequest)).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

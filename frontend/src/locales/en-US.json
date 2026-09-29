@@ -454,6 +454,7 @@
       "requiresVerification": "Authentication requires verification code. If no verification code was prompted, try logging in at https://account.apple.com to trigger the alert and fill the code in the 2FA Code field.",
       "redirectLocation": "Failed to retrieve redirect location",
       "emptyBody": "Authentication failed: server returned HTTP {{status}} with empty body",
+      "transient": "Authentication failed: Apple's sign-in endpoint kept answering with unexpected statuses ({{statuses}}) across 3 attempts. This is usually temporary on Apple's side — try again shortly.",
       "missingAccountInfo": "Missing accountInfo in response",
       "missingAddress": "Missing address in response",
       "unknownReason": "Authentication failed for an unknown reason"

@@ -6,6 +6,12 @@ import { fetchBag, defaultAuthURL } from "./bag";
 import { prepareSigner } from "./sap/client";
 import i18n from "../i18n";
 
+// Apple returns these on the auth endpoint at random. ipatool retries the same
+// set: three attempts, ten seconds apart.
+const TRANSIENT_STATUSES = new Set([204, 404, 429]);
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 10_000;
+
 export class AuthenticationError extends Error {
   constructor(
     message: string,
@@ -54,36 +60,36 @@ export async function authenticate(
     sapSigner = await prepareSigner(deviceId, bag.sapEndpoints);
   }
 
+  const plistBody = buildPlist({
+    appleId: email,
+    attempt: code ? "2" : "4",
+    guid: deviceId,
+    password: code ? `${password}${code}` : password,
+    rmp: "0",
+    why: "signIn",
+  });
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-apple-plist",
+  };
+
+  if (sapSigner) {
+    // The signature must cover the exact bytes on the wire; libcurl sends the
+    // body string as UTF-8, so sign its encoded form. Signed once: the body is
+    // identical across retries and redirects, and signing costs seconds.
+    headers["X-Apple-ActionSignature"] = await sapSigner.sign(
+      new TextEncoder().encode(plistBody),
+    );
+  }
+
   let currentAttempt = 0;
   let redirectAttempt = 0;
+  const transientStatuses: number[] = [];
 
-  while (currentAttempt < 2 && redirectAttempt <= 3) {
+  while (currentAttempt < MAX_ATTEMPTS && redirectAttempt <= 3) {
     currentAttempt++;
 
     try {
-      const body: Record<string, string> = {
-        appleId: email,
-        attempt: code ? "2" : "4",
-        guid: deviceId,
-        password: code ? `${password}${code}` : password,
-        rmp: "0",
-        why: "signIn",
-      };
-
-      const plistBody = buildPlist(body);
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/x-apple-plist",
-      };
-
-      if (sapSigner) {
-        // The signature must cover the exact bytes on the wire; libcurl sends
-        // the body string as UTF-8, so sign its encoded form.
-        headers["X-Apple-ActionSignature"] = await sapSigner.sign(
-          new TextEncoder().encode(plistBody),
-        );
-      }
-
       const response = await appleRequest({
         method: "POST",
         host: requestHost,
@@ -121,6 +127,25 @@ export async function authenticate(
         currentAttempt--;
         redirectAttempt++;
         continue;
+      }
+
+      // Apple answers this endpoint with 204, 404, 429 or a 5xx at random,
+      // regardless of the request — the same body a moment later succeeds. So
+      // these are retried rather than reported, matching what ipatool settled
+      // on after the same trouble (their issue #530).
+      if (TRANSIENT_STATUSES.has(response.status) || response.status >= 500) {
+        transientStatuses.push(response.status);
+
+        if (currentAttempt < MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+          continue;
+        }
+
+        throw new Error(
+          i18n.t("errors.auth.transient", {
+            statuses: transientStatuses.join(", "),
+          }),
+        );
       }
 
       // Handle non-plist responses (e.g. 403 with empty body)
