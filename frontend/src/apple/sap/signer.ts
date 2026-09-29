@@ -9,6 +9,7 @@
 
 import { buildPlist } from "../plist";
 import { Machine, type AssetBundle } from "./machine";
+import type { GuestImage } from "./image";
 
 const SETUP_CERTIFICATE_KEY = "sign-sap-setup-cert";
 const SETUP_BUFFER_KEY = "sign-sap-setup-buffer";
@@ -119,10 +120,16 @@ export class Signer {
     bundle: AssetBundle,
     config: SapConfig,
     transport: Transport,
+    // When a prebuilt guest image is available the loader is skipped and only
+    // bundle.coreFPICXS is read, since the guest streams that one rather than
+    // having it mapped.
+    image?: GuestImage | null,
   ): Promise<Signer> {
     validate(config);
 
-    const machine = await Machine.open(bundle);
+    const machine = image
+      ? await Machine.fromImage(image, bundle.coreFPICXS)
+      : await Machine.open(bundle);
     let complete = false;
 
     try {

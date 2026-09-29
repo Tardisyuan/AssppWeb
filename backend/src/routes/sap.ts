@@ -1,6 +1,8 @@
 import express, { Router, Request, Response } from "express";
 import { createReadStream } from "fs";
+import { stat } from "fs/promises";
 import path from "path";
+import { config } from "../config.js";
 import {
   REQUIRED_ASSETS,
   assetDirectory,
@@ -111,6 +113,62 @@ router.get("/sap/assets/:name", async (req: Request, res: Response) => {
   res.type("application/octet-stream");
   res.setHeader("Content-Length", String(spec.size));
   // Immutable: these are fixed files from a 2013 release.
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  createReadStream(file).pipe(res);
+});
+
+// The prebuilt guest image, if this deployment has one.
+//
+// tools/dump-sap-image.sh runs ipatool's own loader once and writes the guest
+// memory it produces into DATA_DIR/sap-image. Given that, the browser maps the
+// regions and writes the bytes instead of parsing Mach-O and interpreting dyld
+// opcodes itself. Without it the client falls back to loading the images, so
+// these endpoints answering 404 is an ordinary state, not a fault.
+
+const IMAGE_BLOB = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.bin$/;
+
+function imageDirectory(): string {
+  return path.join(config.dataDir, "sap-image");
+}
+
+router.get("/sap/image/manifest.json", async (_req: Request, res: Response) => {
+  const file = path.join(imageDirectory(), "manifest.json");
+
+  try {
+    await stat(file);
+  } catch {
+    res.status(404).json({ error: "No prebuilt SAP image" });
+    return;
+  }
+
+  console.log("SAP image: serving manifest");
+  res.type("application/json");
+  createReadStream(file).pipe(res);
+});
+
+router.get("/sap/image/:blob", async (req: Request, res: Response) => {
+  const blob = String(req.params.blob ?? "");
+
+  // Only plain .bin names, so the parameter cannot walk the filesystem.
+  if (!IMAGE_BLOB.test(blob)) {
+    res.status(404).json({ error: "Unknown SAP image blob" });
+    return;
+  }
+
+  const file = path.join(imageDirectory(), blob);
+
+  let size: number;
+  try {
+    size = (await stat(file)).size;
+  } catch {
+    res.status(404).json({ error: `SAP image blob ${blob} is not present` });
+    return;
+  }
+
+  console.log(`SAP image: serving ${blob} (${size} bytes)`);
+  res.type("application/octet-stream");
+  res.setHeader("Content-Length", String(size));
+  // Immutable: regenerating the image changes its contents wholesale.
   res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
   createReadStream(file).pipe(res);
 });

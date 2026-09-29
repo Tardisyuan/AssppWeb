@@ -63,9 +63,17 @@ export class Shims {
    */
   trace: ((name: string) => void) | null = null;
 
-  constructor(engine: Engine) {
+  // Addresses fixed by a prebuilt guest image. When present, the images were
+  // relocated against these at build time, so a slot keeps the address the
+  // image expects instead of whatever the cursor would hand out, and its RET
+  // and data are already in the image rather than written here.
+  private readonly preassigned: Map<string, bigint> | null;
+
+  constructor(engine: Engine, preassigned?: Map<string, bigint>) {
     this.engine = engine;
-    this.engine.memMap(SHIM_BASE, SHIM_SIZE);
+    this.preassigned = preassigned ?? null;
+    // A prebuilt image already carries this region, mapped with the rest.
+    if (!this.preassigned) this.engine.memMap(SHIM_BASE, SHIM_SIZE);
     this.registerMemoryServices();
   }
 
@@ -108,14 +116,17 @@ export class Shims {
     const existing = this.symbols.get(name);
     if (existing !== undefined) return existing;
 
-    if (this.codeCursor + SHIM_SLOT_SIZE > SHIM_BASE + SHIM_CODE_SIZE) {
+    const fixed = this.preassigned?.get(name);
+    if (fixed === undefined && this.codeCursor + SHIM_SLOT_SIZE > SHIM_BASE + SHIM_CODE_SIZE) {
       throw new Error("guest service code area is full");
     }
 
-    const address = this.codeCursor;
-    this.codeCursor += SHIM_SLOT_SIZE;
+    const address = fixed ?? this.codeCursor;
+    if (fixed === undefined) {
+      this.codeCursor += SHIM_SLOT_SIZE;
+      this.engine.memWrite(address, new Uint8Array([0xc3]));
+    }
 
-    this.engine.memWrite(address, new Uint8Array([0xc3]));
     this.entries.set(address, { name, handler });
     this.symbols.set(name, address);
 
@@ -129,6 +140,12 @@ export class Shims {
   addData(name: string, data: Uint8Array): bigint {
     const existing = this.symbols.get(name);
     if (existing !== undefined) return existing;
+
+    const fixed = this.preassigned?.get(name);
+    if (fixed !== undefined) {
+      this.symbols.set(name, fixed);
+      return fixed;
+    }
 
     this.dataCursor = align(this.dataCursor, 8n);
     if (this.dataCursor + BigInt(data.length) > SHIM_BASE + SHIM_SIZE) {

@@ -160,14 +160,28 @@ async function fetchAsset(
 export async function loadAssets(
   headers: Record<string, string> = {},
   onProgress?: (progress: AssetProgress) => void,
+  // Which of the four to fetch. A prebuilt guest image already carries the
+  // relocated segments, leaving only CoreFP.icxs, which is streamed by the
+  // guest rather than mapped. Keys left out come back empty, so only ask for
+  // less when the caller is known not to read the rest.
+  only?: (keyof AssetBundle)[],
 ): Promise<AssetBundle> {
   await ensureInstalled(headers, onProgress);
 
+  const wanted = Object.entries(FILES).filter(
+    ([key]) => !only || only.includes(key as keyof AssetBundle),
+  );
+
   const entries = await Promise.all(
-    Object.entries(FILES).map(async ([key, name]) => {
+    wanted.map(async ([key, name]) => {
       return [key, await fetchAsset(name, headers, onProgress)] as const;
     }),
   );
 
-  return Object.fromEntries(entries) as unknown as AssetBundle;
+  const bundle = Object.fromEntries(entries) as unknown as AssetBundle;
+  for (const key of Object.keys(FILES) as (keyof AssetBundle)[]) {
+    if (!bundle[key]) bundle[key] = new Uint8Array(0);
+  }
+
+  return bundle;
 }

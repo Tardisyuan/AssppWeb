@@ -7,6 +7,7 @@
 // worker is set up once and kept for the session.
 
 import { loadAssets, type AssetProgress } from "./assets";
+import { loadGuestImage } from "./image";
 import { Signer, type Transport } from "./signer";
 
 export type WorkerRequest =
@@ -52,9 +53,16 @@ function post(message: WorkerResponse, transfer?: Transferable[]) {
 }
 
 async function setup(hardwareID: Uint8Array) {
-  const bundle = await loadAssets(accessHeaders, (asset) => {
-    post({ type: "progress", phase: "assets", asset });
-  });
+  // A deployment may ship a prebuilt guest image; without one the loader runs.
+  const image = await loadGuestImage(accessHeaders).catch(() => null);
+
+  const bundle = await loadAssets(
+    accessHeaders,
+    (asset) => {
+      post({ type: "progress", phase: "assets", asset });
+    },
+    image ? ["coreFPICXS"] : undefined,
+  );
 
   post({ type: "progress", phase: "setup" });
 
@@ -69,6 +77,7 @@ async function setup(hardwareID: Uint8Array) {
       hardwareID,
     },
     transport,
+    image,
   );
 
   post({ type: "ready" });

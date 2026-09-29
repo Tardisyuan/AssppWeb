@@ -9,6 +9,7 @@
 // they are looked up by those names rather than anything descriptive.
 
 import { Engine } from "./engine";
+import type { GuestImage } from "./image";
 import { type Block, type Decoded, measureBlock } from "./length";
 import { MachImage } from "./macho";
 import { registerPlatformServices } from "./platform";
@@ -146,6 +147,50 @@ export class Machine {
     ] as const) {
       image.relocate(base, resolve);
       image.load(engine);
+    }
+
+    return new Machine(engine, shims, entry);
+  }
+
+  /**
+   * Builds a machine from a prebuilt guest image, skipping the loader.
+   *
+   * The image already holds the relocated segments, the shim stubs and the
+   * return trampoline, so this maps the regions, writes the bytes, and binds
+   * handlers to the addresses the image was relocated against.
+   */
+  static async fromImage(
+    image: GuestImage,
+    icxs: Uint8Array,
+  ): Promise<Machine> {
+    const engine = await Engine.create();
+
+    for (const region of image.regions) {
+      engine.memMap(region.address, region.size);
+      if (region.data) engine.memWrite(region.address, region.data);
+    }
+
+    const shims = new Shims(engine, image.symbols);
+
+    const coreExports = new Map<string, bigint>();
+    for (const name of CORE_EXPORT_NAMES) {
+      const address = image.exports.get(name);
+      if (address === undefined) {
+        throw new Error(`prebuilt SAP image is missing export ${name}`);
+      }
+      coreExports.set(name, address);
+    }
+
+    registerPlatformServices(shims, engine, coreExports, icxs);
+    shims.installHook();
+
+    const entry = {} as EntryPoints;
+    for (const [role, symbol] of Object.entries(ENTRY_NAMES)) {
+      const address = image.exports.get(symbol);
+      if (address === undefined) {
+        throw new Error(`prebuilt SAP image is missing entry point ${symbol}`);
+      }
+      entry[role as keyof EntryPoints] = address;
     }
 
     return new Machine(engine, shims, entry);

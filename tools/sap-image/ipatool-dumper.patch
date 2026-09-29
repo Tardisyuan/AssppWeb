@@ -1,0 +1,331 @@
+diff --git a/cmd/dumpsap/main.go b/cmd/dumpsap/main.go
+new file mode 100644
+index 0000000..8c93450
+--- /dev/null
++++ b/cmd/dumpsap/main.go
+@@ -0,0 +1,92 @@
++// Produces the pre-relocated SAP guest image for the browser port.
++//
++// Runs ipatool's own loader once, then writes each populated guest region as a
++// blob plus a manifest of the geometry, the shim symbol table and the entry
++// points. The browser then maps the regions and writes the blobs, with no
++// Mach-O parsing or dyld opcode interpretation of its own.
++package main
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"flag"
++	"fmt"
++	"os"
++	"path/filepath"
++
++	"github.com/majd/ipatool/v2/internal/sap/assets"
++	"github.com/majd/ipatool/v2/internal/sap/machine"
++)
++
++func main() {
++	out := flag.String("out", "sap-image", "directory to write the image into")
++	flag.Parse()
++
++	ctx := context.Background()
++
++	bundle, err := assets.Load(ctx)
++	if err != nil {
++		fail("load Apple SAP assets: %v", err)
++	}
++
++	guest, err := machine.Open(ctx, bundle)
++	if err != nil {
++		fail("open SAP runtime: %v", err)
++	}
++	defer guest.Close()
++
++	dump, err := guest.Dump()
++	if err != nil {
++		fail("dump SAP runtime: %v", err)
++	}
++
++	if err := os.MkdirAll(*out, 0o755); err != nil {
++		fail("create %s: %v", *out, err)
++	}
++
++	for index := range dump.Regions {
++		region := &dump.Regions[index]
++		if len(region.Data) == 0 {
++			continue
++		}
++
++		digest := sha256.Sum256(region.Data)
++		region.SHA256 = hex.EncodeToString(digest[:])
++		region.Blob = region.Name + ".bin"
++
++		if err := os.WriteFile(filepath.Join(*out, region.Blob), region.Data, 0o644); err != nil {
++			fail("write %s: %v", region.Blob, err)
++		}
++	}
++
++	manifest, err := json.MarshalIndent(dump, "", "  ")
++	if err != nil {
++		fail("encode manifest: %v", err)
++	}
++
++	if err := os.WriteFile(filepath.Join(*out, "manifest.json"), append(manifest, 10), 0o644); err != nil {
++		fail("write manifest: %v", err)
++	}
++
++	fmt.Printf("entry points: initialize=%#x exchange=%#x sign=%#x\n",
++		dump.EntryPoints.Initialize, dump.EntryPoints.Exchange, dump.EntryPoints.Sign)
++	fmt.Printf("shim symbols: %d\n", len(dump.Symbols))
++
++	var total uint64
++	for _, region := range dump.Regions {
++		kind := "mapped only"
++		if len(region.Data) > 0 {
++			kind = region.Blob
++			total += uint64(len(region.Data))
++		}
++		fmt.Printf("  %-13s %#014x %9d  %s\n", region.Name, region.Address, region.Size, kind)
++	}
++	fmt.Printf("blob bytes: %d\n", total)
++}
++
++func fail(format string, args ...any) {
++	fmt.Fprintf(os.Stderr, format+"\n", args...)
++	os.Exit(1)
++}
+diff --git a/internal/sap/machimage/image.go b/internal/sap/machimage/image.go
+index 9c7c753..f10e676 100644
+--- a/internal/sap/machimage/image.go
++++ b/internal/sap/machimage/image.go
+@@ -40,6 +40,12 @@ type Image struct {
+ 	rebases    []types.Rebase
+ 	relocated  bool
+ 	loadedBase uint64
++	loadedSpan uint64
++}
++
++// LoadedRange reports the guest range Load mapped.
++func (i *Image) LoadedRange() (uint64, uint64) {
++	return i.loadedBase, i.loadedSpan
+ }
+ 
+ func Open(name string, input []byte) (*Image, error) {
+@@ -228,6 +234,8 @@ func (i *Image) Load(memory Memory) error {
+ 		return fmt.Errorf("map %s: %w", i.name, err)
+ 	}
+ 
++	i.loadedSpan = span
++
+ 	for _, item := range i.segments {
+ 		if item.name == "__PAGEZERO" || item.fileSize == 0 {
+ 			continue
+diff --git a/internal/sap/machine/dump.go b/internal/sap/machine/dump.go
+new file mode 100644
+index 0000000..7522d81
+--- /dev/null
++++ b/internal/sap/machine/dump.go
+@@ -0,0 +1,170 @@
++package machine
++
++// Dumping support for a browser-side SAP port.
++//
++// The guest images relocate deterministically: their bytes, their load bases
++// and the shim addresses they bind against are all fixed. So the
++// post-relocation memory image is reproducible, and can be produced once at
++// build time instead of reimplementing the Mach-O loader and the dyld
++// bind/rebase opcode machines in the browser.
++
++import (
++	"errors"
++	"fmt"
++	"sort"
++)
++
++type DumpRegion struct {
++	Name    string `json:"name"`
++	Address uint64 `json:"address"`
++	Size    uint64 `json:"size"`
++	Blob    string `json:"blob,omitempty"`
++	SHA256  string `json:"sha256,omitempty"`
++	Data    []byte `json:"-"`
++}
++
++type DumpSymbol struct {
++	Name    string `json:"name"`
++	Address uint64 `json:"address"`
++}
++
++type DumpEntryPoints struct {
++	Initialize uint64 `json:"initialize"`
++	Exchange   uint64 `json:"exchange"`
++	Sign       uint64 `json:"sign"`
++	Teardown   uint64 `json:"teardown"`
++	Dispose    uint64 `json:"dispose"`
++}
++
++type DumpLayout struct {
++	ReturnAddress uint64 `json:"returnAddress"`
++	ScratchBase   uint64 `json:"scratchBase"`
++	ScratchSize   uint64 `json:"scratchSize"`
++	HeapBase      uint64 `json:"heapBase"`
++	HeapSize      uint64 `json:"heapSize"`
++	StackBase     uint64 `json:"stackBase"`
++	StackSize     uint64 `json:"stackSize"`
++	ShimBase      uint64 `json:"shimBase"`
++	ShimCodeSize  uint64 `json:"shimCodeSize"`
++	ShimSize      uint64 `json:"shimSize"`
++	PageSize      uint64 `json:"pageSize"`
++	MaxOutputSize uint64 `json:"maxOutputSize"`
++}
++
++type Dump struct {
++	Regions     []DumpRegion    `json:"regions"`
++	Symbols     []DumpSymbol    `json:"symbols"`
++	EntryPoints DumpEntryPoints `json:"entryPoints"`
++	Layout      DumpLayout      `json:"layout"`
++	// Addresses inside the images themselves, which the platform shims need
++	// and the shim table does not carry.
++	Exports []DumpSymbol `json:"exports"`
++}
++
++// Dump reads back everything the loader wrote into the guest.
++func (m *Machine) Dump() (*Dump, error) {
++	if m.closed {
++		return nil, errors.New("SAP runtime is closed")
++	}
++
++	if m.services == nil {
++		return nil, errors.New("SAP runtime has no shim table")
++	}
++
++	out := &Dump{
++		EntryPoints: DumpEntryPoints{
++			Initialize: m.entry.initialize,
++			Exchange:   m.entry.exchange,
++			Sign:       m.entry.sign,
++			Teardown:   m.entry.teardown,
++			Dispose:    m.entry.dispose,
++		},
++		Layout: DumpLayout{
++			ReturnAddress: returnAddress,
++			ScratchBase:   scratchBase,
++			ScratchSize:   scratchSize,
++			HeapBase:      heapBase,
++			HeapSize:      heapSize,
++			StackBase:     stackBase,
++			StackSize:     stackSize,
++			ShimBase:      shimBase,
++			ShimCodeSize:  shimCodeSize,
++			ShimSize:      shimSize,
++			PageSize:      pageSize,
++			MaxOutputSize: maxOutputSize,
++		},
++	}
++
++	type span struct {
++		name    string
++		address uint64
++		size    uint64
++	}
++
++	// Regions the loader populated: the return trampoline holds one HLT, the
++	// shim area holds the RET stubs and data blobs, the images their segments.
++	populated := []span{
++		{"return", returnAddress, pageSize},
++		{"shims", shimBase, shimSize},
++	}
++
++	names := []string{"CoreFP", "CommerceCore", "CommerceKit"}
++	for index, image := range m.images {
++		base, extent := image.LoadedRange()
++		if extent == 0 {
++			return nil, fmt.Errorf("image %d reports an empty load span", index)
++		}
++
++		name := fmt.Sprintf("image%d", index)
++		if index < len(names) {
++			name = names[index]
++		}
++
++		populated = append(populated, span{name, base, extent})
++	}
++
++	for _, item := range populated {
++		data, err := m.engine.MemRead(item.address, item.size)
++		if err != nil {
++			return nil, fmt.Errorf("read %s at %#x: %w", item.name, item.address, err)
++		}
++
++		out.Regions = append(out.Regions, DumpRegion{
++			Name:    item.name,
++			Address: item.address,
++			Size:    item.size,
++			Data:    data,
++		})
++	}
++
++	// Regions the guest allocates into start zeroed, so only geometry matters.
++	for _, item := range []span{
++		{"scratch", scratchBase, scratchSize},
++		{"heap", heapBase, heapSize},
++		{"stack", stackBase, stackSize},
++	} {
++		out.Regions = append(out.Regions, DumpRegion{
++			Name:    item.name,
++			Address: item.address,
++			Size:    item.size,
++		})
++	}
++
++	for name, address := range m.services.symbols {
++		out.Symbols = append(out.Symbols, DumpSymbol{Name: name, Address: address})
++	}
++
++	sort.Slice(out.Symbols, func(a, b int) bool {
++		return out.Symbols[a].Address < out.Symbols[b].Address
++	})
++
++	for name, address := range m.imageExports {
++		out.Exports = append(out.Exports, DumpSymbol{Name: name, Address: address})
++	}
++
++	sort.Slice(out.Exports, func(a, b int) bool {
++		return out.Exports[a].Name < out.Exports[b].Name
++	})
++
++	return out, nil
++}
+diff --git a/internal/sap/machine/machine.go b/internal/sap/machine/machine.go
+index 5c1d6e9..74a39a0 100644
+--- a/internal/sap/machine/machine.go
++++ b/internal/sap/machine/machine.go
+@@ -48,6 +48,8 @@ type entryPoints struct {
+ 
+ type Machine struct {
+ 	engine        *unicorn.Engine
++	images        []*machimage.Image
++	imageExports  map[string]uint64
+ 	services      *shims
+ 	entry         entryPoints
+ 	scratchCursor uint64
+@@ -126,7 +128,7 @@ func Open(ctx context.Context, bundle assets.Bundle) (*Machine, error) {
+ 		return nil, fmt.Errorf("create Unicorn engine: %w", err)
+ 	}
+ 
+-	machine := &Machine{engine: engine}
++	machine := &Machine{engine: engine, imageExports: exports}
+ 	ready := false
+ 
+ 	defer func() {
+@@ -180,6 +182,8 @@ func Open(ctx context.Context, bundle assets.Bundle) (*Machine, error) {
+ 		if err := item.image.Load(engine); err != nil {
+ 			return nil, fmt.Errorf("load SAP guest image: %w", err)
+ 		}
++
++		machine.images = append(machine.images, item.image)
+ 	}
+ 
+ 	machine.entry = entryPoints{

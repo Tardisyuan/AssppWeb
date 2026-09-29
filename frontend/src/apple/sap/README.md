@@ -122,11 +122,47 @@ nine-instruction loop does exactly that whenever the limit is eight.
 The limit is 32. Measured over a full setup: 32 works and takes 63s, 48 works
 but takes 76s, and 64 traps.
 
+## Two ways to get the guest into memory
+
+By default the client loads Apple's binaries itself: `macho.ts` parses them,
+interprets the dyld bind and rebase opcodes, and relocates three images.
+
+All of that is deterministic — fixed bytes, fixed load bases, and shim
+addresses this side hands out — so it can be done once at build time instead.
+`tools/sap-image/build.sh` runs ipatool's own loader, reads back the guest
+memory, and writes it as blobs plus a manifest of the geometry, the shim
+symbol table and the entry points. The backend serves that at
+`/api/sap/image/`, and `Machine.fromImage` maps the regions and writes the
+bytes with no parsing at all.
+
+Verified byte-identical across independent runs from a fresh clone, which is
+what makes shipping the result sound.
+
+Measured on the same machine, WebKit under the iPhone 15 profile:
+
+```
+             setup    signature   fetched
+loader       76.9 s   6.8 s       38 MB    (the four binaries)
+prebuilt     66.4 s   5.1 s       29.9 MB  (24.6 MB blobs + CoreFP.icxs)
+```
+
+The saving is small because the cost was never the loading: setup is
+`initialize` and the two `exchange` rounds, both bound to the hardware id.
+`CoreFP.icxs` is still fetched because the guest streams it through `_read`
+rather than having it mapped.
+
+What it costs is where the artifact comes from. Producing it needs a Go
+toolchain and ipatool's runtime downloads, so it is not built in the Docker
+image, and 24.6 MB of derived Apple binary does not belong in git. A
+deployment without one loses nothing: the loader path runs, and the endpoints
+answering 404 is an ordinary state.
+
 ## Layout
 
 | File | Role |
 | --- | --- |
 | `macho.ts` | Mach-O loader: x86-64 slice, segments, symbols, dyld rebase and bind opcodes |
+| `image.ts` | Fetches a prebuilt guest image when the deployment has one |
 | `length.ts` | x86-64 length decoder and basic-block measurement |
 | `engine.ts` | unicorn.js wrapper, matching ipatool's `internal/sap/unicorn` |
 | `shims.ts` | Guest service area, calling convention, heap allocator |
