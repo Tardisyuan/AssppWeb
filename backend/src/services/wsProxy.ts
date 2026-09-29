@@ -2,13 +2,20 @@ import { Server as HttpServer } from "http";
 import { server as wisp } from "@mercuryworkshop/wisp-js/server";
 import { accessPasswordHash, verifyAccessToken } from "../config.js";
 
-// Allow only Apple hosts required by bag/auth/purchase/version/download flows.
+// Allow only Apple hosts required by the bag, auth, SAP setup, purchase,
+// version and download flows.
 wisp.options.hostname_whitelist = [
   /^auth\.itunes\.apple\.com$/,
   /^buy\.itunes\.apple\.com$/,
   /^init\.itunes\.apple\.com$/,
   /^p\d+-buy\.itunes\.apple\.com$/,
   /^downloaddispatch\.itunes\.apple\.com$/,
+  // The two SAP setup endpoints the bag advertises, which the signer fetches
+  // through the tunnel like every other Apple call. Blocking them closes the
+  // stream mid-handshake, which libcurl reports as "error code 35: SSL connect
+  // error" rather than anything naming the host.
+  /^fpinit\.itunes\.apple\.com$/,
+  /^s\.mzstatic\.com$/,
 ];
 wisp.options.port_whitelist = [443];
 wisp.options.allow_direct_ip = false;
