@@ -136,6 +136,35 @@ export async function authenticate(
       if (TRANSIENT_STATUSES.has(response.status) || response.status >= 500) {
         transientStatuses.push(response.status);
 
+        // A 204 carries no body and no failure code, so the response headers
+        // are the only evidence of which Apple service answered and whether
+        // the request reached the credential check at all. They travel inside
+        // the wisp tunnel, so they cannot be read from devtools.
+        console.warn(
+          `[Auth] HTTP ${response.status} from ${requestHost}${requestPath}`,
+          Object.fromEntries(
+            [
+              "apple-originating-system",
+              "x-responding-instance",
+              "x-apple-jingle-correlation-key",
+              "x-apple-request-uuid",
+              "apple-timing-app",
+              "apple-seq",
+              "apple-tk",
+              "content-type",
+              "content-length",
+              "location",
+              "pod",
+              "x-set-apple-store-front",
+              "retry-after",
+              "www-authenticate",
+            ]
+              .map((name) => [name, response.headers[name]])
+              .filter(([, value]) => value !== undefined),
+          ),
+          { signed: Boolean(sapSigner), signatureChars: headers["X-Apple-ActionSignature"]?.length ?? 0 },
+        );
+
         if (currentAttempt < MAX_ATTEMPTS) {
           await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
           continue;
