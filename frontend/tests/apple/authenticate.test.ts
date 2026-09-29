@@ -18,7 +18,7 @@ vi.mock("../../src/apple/bag", () => ({
 // here; what it produces is not what these tests are about.
 vi.mock("../../src/apple/sap/client", () => ({
   prepareSigner: vi.fn().mockResolvedValue(undefined),
-  signAction: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+  signWithSap: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
 }));
 
 describe("apple/authenticate", () => {
@@ -92,7 +92,6 @@ describe("apple/authenticate", () => {
       undefined,
       undefined,
       "aabbccddeeff",
-      undefined,
       { store: "143460", pod: "18" },
     );
 
@@ -128,7 +127,6 @@ describe("apple/authenticate", () => {
       undefined,
       undefined,
       "aabbccddeeff",
-      undefined,
       { store: "143460", pod: "18" },
     );
 
