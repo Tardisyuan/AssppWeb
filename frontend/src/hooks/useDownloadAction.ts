@@ -79,22 +79,29 @@ export function useDownloadAction() {
     const ctx = getAccountContext(account, t);
     const appName = app.name;
 
-    // Silently renew the password token before purchasing.
-    // This prevents "token expired" (2034/2042) errors that would
-    // otherwise require the user to manually re-authenticate.
+    // Renew the password token before purchasing, which heads off the
+    // "token expired" (2034/2042) errors that would otherwise send the user
+    // off to re-authenticate by hand.
+    //
+    // Only worth attempting with a password to renew against. An account
+    // imported as a token bundle carries none, and trying anyway would
+    // prepare a signer it cannot use.
     let currentAccount = account;
-    try {
-      const renewed = await authenticate(
-        account.email,
-        account.password,
-        undefined,
-        account.cookies,
-        account.deviceIdentifier,
-      );
-      await updateAccount(renewed);
-      currentAccount = renewed;
-    } catch {
-      // Ignore — proceed with existing token
+    if (account.password) {
+      try {
+        const renewed = await authenticate(
+          account.email,
+          account.password,
+          undefined,
+          account.cookies,
+          account.deviceIdentifier,
+          account,
+        );
+        await updateAccount(renewed);
+        currentAccount = renewed;
+      } catch {
+        // Ignore — proceed with the token already held
+      }
     }
 
     const result = await purchaseApp(currentAccount, app);
