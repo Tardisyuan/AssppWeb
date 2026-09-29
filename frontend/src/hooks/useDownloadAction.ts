@@ -99,6 +99,8 @@ export function useDownloadAction() {
           undefined,
           account.cookies,
           account.deviceIdentifier,
+          undefined,
+          account,
         );
         await updateAccount(renewed);
         currentAccount = renewed;

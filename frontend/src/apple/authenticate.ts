@@ -30,6 +30,12 @@ export async function authenticate(
   existingCookies?: Cookie[],
   deviceId: string = "",
   onProgress?: (progress: SetupProgress) => void,
+  // Apple only sends the storefront and pod headers on some responses, and the
+  // account returned here replaces the stored one wholesale. Without the
+  // previous values to fall back on, a renewal that omits them blanks
+  // account.store — which every region filter reads, so the account vanishes
+  // from the app — and drops the pod, sending later calls to the wrong host.
+  previous?: Pick<Account, "store" | "pod">,
 ): Promise<Account> {
   let cookies: Cookie[] = existingCookies ? [...existingCookies] : [];
   let storeFront = "";
@@ -159,14 +165,14 @@ export async function authenticate(
         email,
         password,
         appleId: (accountInfo.appleId as string) ?? "",
-        store: storeFront,
+        store: storeFront || previous?.store || "",
         firstName: (address.firstName as string) ?? "",
         lastName: (address.lastName as string) ?? "",
         passwordToken: (dict.passwordToken as string) ?? "",
         directoryServicesIdentifier: String(dict.dsPersonId ?? ""),
         cookies,
         deviceIdentifier: deviceId,
-        pod,
+        pod: pod ?? previous?.pod,
       };
 
       return account;

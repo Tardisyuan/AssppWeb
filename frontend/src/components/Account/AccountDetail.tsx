@@ -79,6 +79,8 @@ export default function AccountDetail() {
         needsCode && reauthCode ? reauthCode : undefined,
         account.cookies,
         account.deviceIdentifier,
+        undefined,
+        account,
       );
       await updateAccount(updated);
       setNeedsCode(false);
