@@ -455,6 +455,7 @@
       "redirectLocation": "Failed to retrieve redirect location",
       "emptyBody": "Authentication failed: server returned HTTP {{status}} with empty body",
       "transient": "Authentication failed: Apple's sign-in endpoint kept answering with unexpected statuses ({{statuses}}) across 3 attempts. This is usually temporary on Apple's side — try again shortly.",
+      "edgeRefused": "Authentication failed: the request was refused before reaching Apple's sign-in service ({{statuses}}). The response came from Apple's edge, which usually means the server's outbound IP is being rate limited. Wait a while, or give the server a different outbound network.",
       "missingAccountInfo": "Missing accountInfo in response",
       "missingAddress": "Missing address in response",
       "unknownReason": "Authentication failed for an unknown reason"

@@ -209,4 +209,62 @@ describe("apple/authenticate", () => {
       vi.useRealTimers();
     }
   });
+
+  // An edge refusal and a service answering badly need different advice: one
+  // is the server's outbound IP, the other is Apple.
+  it("reports an edge refusal when no Apple service stamped the response", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchBag).mockResolvedValue({
+        authURL:
+          "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate",
+      });
+      vi.mocked(appleRequest).mockResolvedValue(
+        reply(404, "", { "content-type": "text/html", "content-length": "146" }),
+      );
+
+      const pending = authenticate(
+        "test@example.com",
+        "password",
+        undefined,
+        undefined,
+        "aabbccddeeff",
+      ).catch((error: Error) => error);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      const error = (await pending) as Error;
+
+      expect(error.message).toContain("refused before reaching");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports Apple trouble when a service did stamp the response", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchBag).mockResolvedValue({
+        authURL:
+          "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate",
+      });
+      vi.mocked(appleRequest).mockResolvedValue(
+        reply(503, "", { "apple-originating-system": "MZFinance" }),
+      );
+
+      const pending = authenticate(
+        "test@example.com",
+        "password",
+        undefined,
+        undefined,
+        "aabbccddeeff",
+      ).catch((error: Error) => error);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      const error = (await pending) as Error;
+
+      expect(error.message).toContain("kept answering");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

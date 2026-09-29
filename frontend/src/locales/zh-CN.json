@@ -455,6 +455,7 @@
       "redirectLocation": "无法获取重定向地址",
       "emptyBody": "认证失败：服务器返回 HTTP {{status}} 且响应体为空",
       "transient": "认证失败：Apple 的登录接口连续返回异常状态（{{statuses}}），已重试 3 次。这通常是 Apple 侧的临时问题，请稍后再试。",
+      "edgeRefused": "认证失败：请求没有到达 Apple 的登录服务就被拒绝了（{{statuses}}）。响应来自 Apple 的边缘节点，通常意味着服务器的出口 IP 被限流。等一段时间，或给服务器换个出口网络后再试。",
       "missingAccountInfo": "响应中缺少 accountInfo",
       "missingAddress": "响应中缺少 address",
       "unknownReason": "未知原因导致认证失败"

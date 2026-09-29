@@ -455,6 +455,7 @@
       "redirectLocation": "無法取得重新導向位址",
       "emptyBody": "認證失敗：伺服器傳回 HTTP {{status}} 且回應主體為空",
       "transient": "認證失敗：Apple 的登入介面連續回傳異常狀態（{{statuses}}），已重試 3 次。這通常是 Apple 端的暫時問題，請稍後再試。",
+      "edgeRefused": "認證失敗：請求還沒到達 Apple 的登入服務就被拒絕了（{{statuses}}）。回應來自 Apple 的邊緣節點，通常表示伺服器的出口 IP 被限流。請等一段時間，或替伺服器換個出口網路後再試。",
       "missingAccountInfo": "回應中缺少 accountInfo",
       "missingAddress": "回應中缺少 address",
       "unknownReason": "未知原因導致認證失敗"

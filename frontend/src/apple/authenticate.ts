@@ -85,6 +85,10 @@ export async function authenticate(
   let currentAttempt = 0;
   let redirectAttempt = 0;
   const transientStatuses: number[] = [];
+  // Apple's own services stamp these. Their absence means the response came
+  // from the edge, so the request never reached the service that checks
+  // credentials — a different problem from a service that answered badly.
+  let reachedAppleService = false;
 
   while (currentAttempt < MAX_ATTEMPTS && redirectAttempt <= 3) {
     currentAttempt++;
@@ -133,6 +137,14 @@ export async function authenticate(
       // regardless of the request — the same body a moment later succeeds. So
       // these are retried rather than reported, matching what ipatool settled
       // on after the same trouble (their issue #530).
+      if (
+        response.headers["apple-originating-system"] ||
+        response.headers["x-apple-jingle-correlation-key"] ||
+        response.headers["x-responding-instance"]
+      ) {
+        reachedAppleService = true;
+      }
+
       if (TRANSIENT_STATUSES.has(response.status) || response.status >= 500) {
         transientStatuses.push(response.status);
 
@@ -171,9 +183,12 @@ export async function authenticate(
         }
 
         throw new Error(
-          i18n.t("errors.auth.transient", {
-            statuses: transientStatuses.join(", "),
-          }),
+          i18n.t(
+            reachedAppleService
+              ? "errors.auth.transient"
+              : "errors.auth.edgeRefused",
+            { statuses: transientStatuses.join(", ") },
+          ),
         );
       }
 
