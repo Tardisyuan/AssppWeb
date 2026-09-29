@@ -10,7 +10,7 @@
 import { SapSigner, type SapMachineDriver } from "./signer";
 import { exchangeSetupBuffer, fetchSetupCertificate } from "./protocol";
 import { loadSapAssets } from "./assets";
-import type { SapEndpoints } from "./types";
+import { hardwareIDBytes, type SapEndpoints } from "./types";
 import { useSapStore } from "../../store/sap";
 
 interface WorkerResult {
@@ -217,7 +217,7 @@ async function runPreparation(
     const signer = await SapSigner.create(
       {
         ...endpoints,
-        hardwareID: new TextEncoder().encode(hardwareID),
+        hardwareID: hardwareIDBytes(hardwareID),
         assets,
       },
       driver,

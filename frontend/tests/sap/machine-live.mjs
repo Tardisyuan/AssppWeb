@@ -34,7 +34,12 @@ const t0 = Date.now();
 const machine = await SapMachine.open(assets, { wasmBinary });
 console.log(`machine open OK (${Date.now() - t0}ms)`);
 
-const hardwareID = new TextEncoder().encode("0123456789ab");
+// The identifier is hex, and the signer wants the bytes behind it — the same
+// raw bytes whose uppercase hex ipatool uses as the guid. Encoding the text
+// binds the session to a different identity.
+const hardwareID = Uint8Array.from(
+  "0123456789ab".match(/../g).map((byte) => Number.parseInt(byte, 16)),
+);
 const t1 = Date.now();
 const context = machine.initialize(hardwareID);
 console.log(`initialize OK (${Date.now() - t1}ms): context = 0x${context.toString(16)}`);

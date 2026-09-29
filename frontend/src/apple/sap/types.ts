@@ -40,3 +40,26 @@ export function validateSapSignerOptions(options: SapSignerOptions): void {
     }
   }
 }
+
+/**
+ * The bytes behind the device identifier.
+ *
+ * The identifier is hex: ipatool derives it as the uppercase hex of a MAC
+ * address and passes those raw bytes to the signer, so the guid in the request
+ * and the identity in the SAP session describe the same device. Encoding the
+ * hex text instead binds the session to a different identity — the signature
+ * comes back the right shape and Apple rejects it with a bare 204.
+ */
+export function hardwareIDBytes(hardwareID: string): Uint8Array {
+  const clean = hardwareID.replace(/[^0-9a-fA-F]/g, "");
+  if (clean.length === 0 || clean.length % 2 !== 0 || clean.length > 40) {
+    throw new Error("device identifier must be 1 to 20 hex-encoded bytes");
+  }
+
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let index = 0; index < bytes.length; index++) {
+    bytes[index] = Number.parseInt(clean.slice(index * 2, index * 2 + 2), 16);
+  }
+
+  return bytes;
+}
