@@ -65,13 +65,18 @@ capability: webassembly ✓  worker ✓  caches ✓  bigint ✓
 setup 34.9 s, signing 3.5 s, signature 501 bytes
 ```
 
-What that does not settle is memory on an actual phone. Measuring the
-worker's footprint directly needs `measureUserAgentSpecificMemory` and so
-cross-origin isolation, which this app does not have, but the guest mapping
-is 144 MB and the assets another 38, so it is on the order of 200 MB. A
-desktop WebKit has far more headroom than an iPhone, so the remaining risk is
-a device killing the tab under memory pressure — which only a real device can
-answer.
+What that does not settle is memory on an actual phone, and it cannot be
+settled from here. `measureUserAgentSpecificMemory` needs cross-origin
+isolation, which this app does not have. Reading the engine's heap directly
+does not work either: the unicorn.js build exports no handle on it — the only
+memory-related symbol on the module is `writeArrayToMemory`, with no `HEAPU8`
+or `wasmMemory` — so there is nothing to read without forking and rebuilding
+the WebAssembly.
+
+What is known is the geometry: the guest mapping is 144 MB and the assets
+another 38, so the footprint is on the order of 200 MB. A desktop WebKit has
+far more headroom than an iPhone, so the remaining risk is a device killing
+the tab under memory pressure. Only a real device answers that.
 
 ## The block splitter
 
