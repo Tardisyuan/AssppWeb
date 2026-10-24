@@ -3,7 +3,9 @@ import { appleRequest } from "./request";
 import { buildPlist, parsePlist } from "./plist";
 import { extractAndMergeCookies } from "./cookies";
 import { fetchBag, defaultAuthURL } from "./bag";
-import { prepareSigner } from "./sap/client";
+import { connectSAP } from "./sap";
+import { toBase64 } from "./sap/bytes";
+import type { SAPSigner } from "./sap/signer";
 import i18n from "../i18n";
 
 // Apple's edge load-sheds this route: identical requests measured from a clean
@@ -15,6 +17,19 @@ import i18n from "../i18n";
 const TRANSIENT_STATUSES = new Set([204, 404, 429]);
 const MAX_ATTEMPTS = 8;
 const RETRY_DELAY_MS = 2_000;
+
+// One SAP session per page session. Setup costs two round-trips to Apple and
+// a session signs any number of bodies, so sign-in attempts and the
+// verification-code step that follows reuse it. A failed setup is not cached.
+let sapSession: Promise<SAPSigner> | null = null;
+
+function sapSigner(): Promise<SAPSigner> {
+  sapSession ??= connectSAP().catch((error: unknown) => {
+    sapSession = null;
+    throw error;
+  });
+  return sapSession;
+}
 
 export class AuthenticationError extends Error {
   constructor(
@@ -54,15 +69,13 @@ export async function authenticate(
   requestHost = authEndpoint.hostname;
   requestPath = `${authEndpoint.pathname}${authEndpoint.search}`;
 
-  // When the bag advertises the SAP signing protocol, every request to the
-  // auth endpoint must carry X-Apple-ActionSignature over its body bytes.
-  // The signer sees only the hardware ID and public Apple assets — never the
-  // password — because signing happens here in the browser. It is kept as a
-  // singleton between attempts (2FA retries reuse the same session).
-  let sapSigner = null as Awaited<ReturnType<typeof prepareSigner>> | null;
-  if (bag.sapEndpoints) {
-    sapSigner = await prepareSigner(deviceId, bag.sapEndpoints);
-  }
+  // Apple requires X-Apple-ActionSignature over the body bytes of every
+  // request to the auth endpoint. The session is established here in the
+  // browser, so the password reaches the signer only as the opaque bytes it
+  // signs. The handshake carries no credentials at all. An unsigned request
+  // is answered 403, so there is no fallback worth keeping: a setup failure
+  // fails the sign-in.
+  const signer = await sapSigner();
 
   const plistBody = buildPlist({
     appleId: email,
@@ -77,14 +90,13 @@ export async function authenticate(
     "Content-Type": "application/x-apple-plist",
   };
 
-  if (sapSigner) {
-    // The signature must cover the exact bytes on the wire; libcurl sends the
-    // body string as UTF-8, so sign its encoded form. Signed once: the body is
-    // identical across retries and redirects, and signing costs seconds.
-    headers["X-Apple-ActionSignature"] = await sapSigner.sign(
-      new TextEncoder().encode(plistBody),
-    );
-  }
+  // The signature must cover the exact bytes on the wire; libcurl sends the
+  // body string as UTF-8, so sign its encoded form. Signed once: the body is
+  // identical across retries and redirects, and each signature consumes IV
+  // state from the session.
+  headers["X-Apple-ActionSignature"] = toBase64(
+    await signer.sign(new TextEncoder().encode(plistBody)),
+  );
 
   let currentAttempt = 0;
   let redirectAttempt = 0;
@@ -178,7 +190,7 @@ export async function authenticate(
               .map((name) => [name, response.headers[name]])
               .filter(([, value]) => value !== undefined),
           ),
-          { signed: Boolean(sapSigner), signatureChars: headers["X-Apple-ActionSignature"]?.length ?? 0 },
+          { signatureChars: headers["X-Apple-ActionSignature"].length },
         );
 
         if (currentAttempt < MAX_ATTEMPTS) {

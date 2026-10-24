@@ -14,7 +14,6 @@ import packageRoutes from "./routes/packages.js";
 import installRoutes from "./routes/install.js";
 import settingsRoutes from "./routes/settings.js";
 import bagRoutes from "./routes/bag.js";
-import sapAssetRoutes from "./routes/sapAssets.js";
 
 const app = express();
 
@@ -31,7 +30,6 @@ app.use("/api", packageRoutes);
 app.use("/api", installRoutes);
 app.use("/api", settingsRoutes);
 app.use("/api", bagRoutes);
-app.use("/api", sapAssetRoutes);
 
 // Serve static frontend files
 const publicDir = path.resolve(import.meta.dirname, "../public");

@@ -13,7 +13,6 @@
 - `frontend/` — React SPA (TypeScript, Vite, Tailwind CSS); tests in `frontend/tests/` (not collocated with src)
 - `cloudflare/` + `wrangler.jsonc` — Cloudflare Workers + Containers deployment wrapper around the Docker image
 - `Dockerfile` / `compose.yml` — single container serves both backend and SPA
-- `frontend/scripts/unicorn-wasm-patch/` — patches + glue + build script for the Unicorn TCI WASM engine (see SAP section)
 - `references/` is gitignored personal infrastructure (never commit); a local ApplePackage checkout may or may not exist
 
 ## Architecture — Zero-Trust
@@ -60,68 +59,46 @@ The server is a blind TCP proxy. It NEVER sees Apple credentials.
 
 ## Architecture — SAP Request Signing (X-Apple-ActionSignature)
 
-Apple requires every request to the auth endpoint to carry `X-Apple-ActionSignature: base64(Sign(bodyBytes))`. The signature is produced by obfuscated SAP entry points inside Apple's CommerceKit/CoreFP binaries (the same mechanism ipatool uses). Key property: **the signer's inputs are only the hardware ID (the per-account `deviceIdentifier`) plus public Apple assets — never credentials — but the signature covers the request body, which contains the password.** Therefore signing MUST stay in the browser; the zero-trust invariant is preserved.
+Apple requires every request to the auth endpoint to carry `X-Apple-ActionSignature: base64(Sign(bodyBytes))`. An unsigned request is answered `403` with an empty body. The signature covers the request body, which contains the password, so signing MUST stay in the browser; the zero-trust invariant is preserved. The setup exchange itself carries no credentials at all, so it can complete before anyone types a password.
+
+`frontend/src/apple/sap/` is a verbatim copy of upstream's TypeScript port (Lakr233/AssppWeb `485be0b`, PR #96), which ports the direct SAP implementation from ApplePackage revision `773583a`. It is pure computation plus Web Crypto — no Apple binaries, no emulator, no backend asset pipeline. Keep it in sync with upstream rather than editing it locally.
 
 ```
 ┌─ Browser ────────────────────────────────────────────────────────┐
-│ 1. Bag (via /api/bag) advertises:                                 │
-│      sign-sap-setup      → setup exchange endpoint (POST plist)   │
-│      sign-sap-setup-cert → certificate endpoint (GET plist)       │
-│      sign-sap-version    → protocol version (200)                 │
-│ 2. GET /api/sap-assets/:name → four Apple binaries (backend-     │
-│    extracted, digest-pinned, browser-cached in the Cache API)     │
-│ 3. SAP signer worker (Web Worker, off the UI thread):             │
-│      Unicorn 2.1.4 → TCI interpreter backend → wasm              │
-│      Mach-O x86_64 images loaded + dyld-info relocated in TS     │
-│      entry points: initialize / exchange / sign / teardown        │
-│ 4. Key exchange over the wisp tunnel (main thread):               │
-│      GET cert → exchange(state 1) → POST setup → exchange(state 0)│
-│ 5. authenticate() signs each attempt's exact UTF-8 body bytes     │
-│    and attaches X-Apple-ActionSignature                           │
+│ 1. GET  s.mzstatic.com/sap/setupCert.plist                        │
+│         → sign-sap-setup-cert (<data>)                            │
+│ 2. createHandshake(certificate) → request bytes                   │
+│ 3. POST fpinit.itunes.apple.com/v1/signSapSetup/legacy             │
+│         → sign-sap-setup-buffer (<data>)                          │
+│ 4. handshake.complete(reply) → SAPSession → createSigner()        │
+│ 5. authenticate() signs the exact UTF-8 body bytes and attaches   │
+│    X-Apple-ActionSignature                                        │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
+Both setup calls ride the wisp tunnel through `appleRequest`, so the server relays them without reading them.
+
 ### Frontend modules (`frontend/src/apple/sap/`)
 
-- `engine.ts` — Unicorn WASM wrapper; all guest addresses cross the JS boundary as doubles (exact below 2^53; the guest map stays below 2^48)
-- `machImage.ts` — Mach-O 64 parser: fat-binary slicing, LC_SEGMENT_64, symtab lookup, dyld_info rebase/bind/weak/lazy opcodes. **Opcode tables**: rebase uses nibbles 0x00–0x80 (SET_TYPE 0x10, SET_SEGMENT 0x20, …); bind is shifted down one slot (DO_BIND 0x90) because rebase-only ADD_ADDR_IMM_SCALED occupies bind's 0x90 slot elsewhere. Segment offsets move in uint64 BigInt space — bind ADD_ADDR_ULEB deltas are 64-bit encodings of negative steps. Fixups targeting a segment's BSS tail (within vmsize, past fileSize) are skipped: dyld would zero-fill them.
-- `shims.ts` — guest libc/CF/IOKit shims; 64-bit −1 constants are passed as `-1` (wasm's saturating f64→i64 conversion yields 0xFFFF…F, which a JS number cannot represent exactly)
-- `machine.ts` — entry-point invocation, scratch/stack layout, output disposal
-- `signer.ts` / `client.ts` / `worker.ts` — orchestration; emulation runs in a Web Worker, Apple network calls ride the wisp tunnel on the main thread. `client.ts` keeps the signer as a singleton bound to the deviceIdentifier (rebuilding it means copying the 22.5 MB asset bundle into a fresh worker), with a zustand store (`store/sap.ts`), a warmup hook (`hooks/useSapWarmup.ts`, fires once an account exists), and an inline progress indicator (`components/common/SapStatus.tsx`)
-- `protocol.ts` — certificate fetch + setup exchange (plist `<data>` round-trip via appleRequest)
-- `assets.ts` — asset download with progress, SHA-256 verification (stripped-file pins), Cache API persistence; accepts both thin and fat Mach-O payloads
-- `vendor/unicorn.mjs|.wasm` — prebuilt engine (regenerate via `frontend/scripts/unicorn-wasm-patch/build.sh`)
-
-### Unicorn TCI WASM build chain (`frontend/scripts/unicorn-wasm-patch/`)
-
-Unicorn 2.x only ships JIT TCG backends, which cannot execute under WebAssembly (no RWX, no wasm codegen). The patch (`patches/unicorn-2.1.4-tci-wasm.patch` against unicorn 2.1.4, whose QEMU base is 5.0.1):
-
-1. Restores the QEMU 5.0.1 TCI interpreter (unicorn stripped it) into the tree
-2. Forces 64-bit virtual TCI registers on wasm32 — QEMU 5.0's 32-bit TCI path is riddled with TODO() stubs; the register file is virtual state, so 64-bit registers need no 64-bit host pointers
-3. Generates uniform-signature helper trampolines (`qemu/target/i386/tci-wasm-tramp.c`): TCI invokes every helper through one cast signature, which wasm's strict indirect-call checks reject
-4. Adapts glib-compat GTree comparators (2-arg vs 3-arg) and disables inline hook callbacks for the same reason
-5. Replaces the timeout thread (no pthreads in wasm) with a wall-clock deadline checked inside the TCI interpreter loop; mprotect/mmap-based guest RAM becomes aligned malloc
-
-Build: `bash frontend/scripts/unicorn-wasm-patch/build.sh` (requires docker; emscripten runs in a container). The signed-off artifacts land in `frontend/src/apple/sap/vendor/`.
-
-### Backend asset pipeline
-
-`backend/src/services/sapAssets.ts` extracts the four binaries once from Apple's public OSXUpd10.9.pkg: xar TOC parse → HTTP range download of the Payload tail (~380 MB) → bzip2 stream (with a synthetic `BZh9` header from a fixed offset) → cpio (odc and newc formats) → pinned SHA-256 verification → **fat-binary stripping to the x86_64 slice** (the emulated guest architecture; CoreFP ships as an i386+x86_64 universal, so this halves it) → cache under `DATA_DIR/sap-assets`. All data is public Apple content (same trust class as the bag proxy). Specs carry two pin sets: the original Apple digest verifies the extraction; the stripped digest (a deterministic function of the original) verifies what is served and what the browser downloads. Distribution sizes: 37.7 MB original → 22.5 MB stripped → ~14 MB on the wire with the route's gzip response. The bz2 stream is truncated mid-file, so the decoder can emit a late crc error after the wanted members are captured — the pipeline swallows it by design (an unhandled rejection would crash Node).
-
-On startup `ensureSapAssets` prefers `DATA_DIR/sap-assets`, then seeds from the image-prebaked directory (`BUNDLED_SAP_ASSETS`, default `/opt/asspp/sap-assets`), and only then falls back to network extraction (the bzip2 decoder is imported lazily because cross-built images may lack a matching napi binary for the runtime arch — see Dockerfile). Routes (`backend/src/routes/sapAssets.ts`): `GET /api/sap-assets/status`, `POST /api/sap-assets/prepare`, `GET /api/sap-assets/:name` (gzip when accepted).
-
-### Container image
-
-The Dockerfile prebakes the stripped SAP assets at build time (a `sap-assets` stage runs `backend/scripts/extract-sap-assets.mts`; Docker layer caching makes it a no-op on rebuilds). Release images ship the assets, so a fresh VPS serves them with zero network use. Build stages run on `$BUILDPLATFORM` (JS artifacts are platform-independent); the runtime image installs production deps per target platform because `yauzl-promise` → `@node-rs/crc32` ships prebuilt napi binaries per arch. Published platforms: `linux/amd64`, `linux/arm64`. **linux/386 is out**: official node images dropped it and `@node-rs/crc32` has no linux-ia32 build.
+- `index.ts` — `connectSAP()`: certificate fetch, handshake, setup exchange, signer construction. Hosts are fixed in code; the bag is not consulted for them
+- `handshake.ts` — key exchange, producing the `SAPSession` the signer needs
+- `signer.ts` — `sign(body)`: builds the blob once, then per call draws an IV from the session RNG, SHA-1s `blob || body`, and runs the two-block cipher. The IV is drawn before the first `await` so concurrent callers cannot reuse one
+- `random.ts` / `source.ts` / `cipher.ts` / `f2.ts` — the ported RNG, F1/F2 arithmetic and transforms
+- `crypto.ts` — SHA-1, HMAC, AES-CBC via Web Crypto, plus seeded RSA-OAEP encoding
+- `tables.ts` / `tables.json` — 219 KB of fixed lookup tables and permutations, verified against pinned sizes and SHA-256 digests on load. No executable code, no private framework, no session or account data
+- `bytes.ts` — byte helpers (`concat`, `be32`, `toBase64`, `digest`, `xor`)
 
 ### SAP invariants
 
-- The signer only ever sees the deviceIdentifier and public Apple assets; the password reaches the signer solely as opaque body bytes it signs in-place — it is never transmitted anywhere except through the wisp tunnel inside the auth request itself
-- Bag missing the SAP keys → signing is skipped (graceful degradation to the legacy flow)
-- SAP session lifetime = the page session: the signer is a singleton per deviceIdentifier, reused across sign-in attempts (2FA retries included); switching accounts rebuilds it. Initialization ≈ 150–300 ms of emulation plus the setup exchange round-trips
-- First login downloads ~14 MB over the wire (22.5 MB stripped assets, gzipped); a background warmup and inline progress line cover it. Release images prebake the assets, so the backend serves them instantly
-- The live bag currently returns the legacy `MZFinance` authenticate endpoint (see upstream PR discussion); `normalizeAuthURL` is effectively inert, and all three advertised endpoints sit in the SAP-signed list — signing applies regardless
+- The signer sees no credentials: the password reaches it only as the opaque body bytes it signs, and those bytes leave the browser solely inside the auth request through the wisp tunnel
+- No unsigned fallback. A setup or signing failure fails the sign-in, because an unsigned request cannot succeed
+- One session per page session: `authenticate()` memoizes `connectSAP()` so sign-in attempts and the verification-code step that follows reuse it. A failed setup is not cached. Setup costs two round-trips to Apple and no measurable computation
+- `wsProxy` must keep `fpinit.itunes.apple.com` and `s.mzstatic.com` allowed; the setup exchange goes through the tunnel
+- The live bag currently returns the legacy `MZFinance` authenticate endpoint, so `normalizeAuthURL` is effectively inert. All three advertised endpoints are in Apple's SAP-signed list, so signing applies regardless
 
+### Container image
+
+Build stages run on `$BUILDPLATFORM` (JS artifacts are platform-independent); the runtime image installs production deps per target platform because `yauzl-promise` → `@node-rs/crc32` ships prebuilt napi binaries per arch, and `bufferutil` (via wisp-js) has no linux-arm64-musl prebuild and compiles from source. That compile runs under QEMU for arm64, so `.github/workflows/docker.yml` pins `tonistiigi/binfmt:qemu-v8.1.5`: the floating `latest` tag shipped an emulator that kills alpine's gcc 15.2 with SIGILL. Published platforms: `linux/amd64`, `linux/arm64`. **linux/386 is out**: official node images dropped it and `@node-rs/crc32` has no linux-ia32 build.
 ## Reference Implementation
 
 The upstream Swift project ApplePackage is the source of truth for Apple protocol behavior (authentication flow, bag endpoint, pod routing, error codes). A local checkout may live at `references/ApplePackage/`, but `references/` is gitignored — it is **not part of this repository** and may be absent. When unavailable, the field mapping below and the existing `frontend/src/apple/*` implementation are the in-repo reference.
@@ -169,8 +146,8 @@ The Wisp server validates target hosts via `hostname_whitelist` in `backend/src/
 - `init.itunes.apple.com` — bag endpoint
 - `/^p\d+-buy\.itunes\.apple\.com$/` — pod-based hosts
 - `downloaddispatch.itunes.apple.com` — redownload dispatch endpoint (failureType 5002 fallback)
-- `fpinit.itunes.apple.com` — SAP setup key exchange (`sign-sap-setup`)
-- `s.mzstatic.com` — SAP setup certificate (`sign-sap-setup-cert`)
+- `fpinit.itunes.apple.com` — SAP setup key exchange
+- `s.mzstatic.com` — SAP setup certificate
 - Port restricted to `443` only
 - Direct IP targets blocked (`allow_direct_ip = false`)
 - Loopback IP targets blocked (`allow_loopback_ips = false`)
@@ -187,7 +164,6 @@ The backend proxies the bag endpoint via `GET /api/bag?guid=<deviceId>` using No
 - `tsx` for development, `tsc` for production build
 - SINF injector also handles optional `iTunesMetadata.plist` injection at IPA root
 - Bag proxy for `init.itunes.apple.com`
-- SAP asset extraction service (xar + bzip2 + cpio) with digest pinning; routes under `/api/sap-assets`
 
 ### Backend Shared Utilities
 
@@ -293,8 +269,7 @@ There is no E2E suite or lint script in the repo currently. Real-account Docker 
 
 SAP-specific tests:
 
-- `frontend/tests/sap/machImage.test.ts` (vitest) — synthetic Mach-O builder exercising symbol export, rebase/bind opcodes, addends, and BSS-tail fixup tolerance
-- `frontend/tests/sap/machine-live.mjs` (manual, `npx tsx`) — full chain against the real Apple assets served by the backend: machine open → Initialize (context matches the native ipatool runtime bit-for-bit: `0x400000000200`) → Sign correctly gated by the key exchange (`-42085` without it, identical to native). Requires `SAP_ASSET_DIR` pointing at a flat copy of the four assets, or the nested extraction layout
+- `frontend/tests/apple/sap.test.ts` (vitest) — upstream's known-answer vectors plus the synthetic setup certificate and reply in `frontend/tests/apple/fixtures/sap-handshake.json`. No Apple certificate, real account, server-issued session or captured production signature is involved
 
 Test credentials, if ever needed, belong in environment variables (`TEST_EMAIL`, `TEST_PASSWORD`, `TEST_DEVICE_ID`, `TEST_BUNDLE_ID`) and must never be committed.
 

@@ -1,0 +1,6 @@
+# Verbatim copies of upstream's SAP port (Lakr233/AssppWeb 485be0b).
+# Formatting them locally would make every future sync a diff against
+# reflowed code.
+src/apple/sap/
+tests/apple/sap.test.ts
+tests/apple/fixtures/sap-handshake.json

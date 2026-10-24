@@ -14,11 +14,13 @@ vi.mock("../../src/apple/bag", () => ({
     "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate",
 }));
 
-// The real signer spawns a Worker and runs an emulator, neither of which exist
-// here; what it produces is not what these tests are about.
-vi.mock("../../src/apple/sap/client", () => ({
-  prepareSigner: vi.fn().mockResolvedValue(undefined),
-  signWithSap: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+// The real setup exchange talks to Apple over two round-trips. These tests
+// are about what authenticate() does with the auth response, so the session
+// is stubbed; tests/apple/sap.test.ts covers the signer itself.
+vi.mock("../../src/apple/sap", () => ({
+  connectSAP: vi
+    .fn()
+    .mockResolvedValue({ sign: async () => new Uint8Array([1, 2, 3]) }),
 }));
 
 describe("apple/authenticate", () => {
