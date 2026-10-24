@@ -10,8 +10,9 @@ vi.mock("../../src/apple/request", () => ({
 
 vi.mock("../../src/apple/bag", () => ({
   fetchBag: vi.fn(),
-  defaultAuthURL:
-    "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate",
+  // The real value: the native endpoint, which is a rotation target distinct
+  // from the legacy one the live bag advertises.
+  defaultAuthURL: "https://auth.itunes.apple.com/auth/v1/native/fast/",
 }));
 
 // The real setup exchange talks to Apple over two round-trips. These tests
@@ -177,6 +178,48 @@ describe("apple/authenticate", () => {
 
       expect(account.passwordToken).toBe("token");
       expect(vi.mocked(appleRequest)).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Apple sheds load per route, so each retry is a fresh draw only if it goes
+  // somewhere else.
+  it("rotates endpoints across retries instead of replaying one", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchBag).mockResolvedValue({
+        authURL:
+          "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate",
+      });
+      vi.mocked(appleRequest).mockResolvedValue(reply(204, ""));
+
+      const pending = authenticate(
+        "test@example.com",
+        "password",
+        undefined,
+        undefined,
+        "aabbccddeeff",
+      ).catch((error: Error) => error);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      await pending;
+
+      const targets = vi
+        .mocked(appleRequest)
+        .mock.calls.map((call) => `${call[0].host}${call[0].path}`);
+
+      // The bag endpoint and the legacy endpoint are the same URL here, so
+      // two distinct candidates remain and the eight attempts alternate.
+      expect(new Set(targets)).toEqual(
+        new Set([
+          "buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate?guid=aabbccddeeff",
+          "auth.itunes.apple.com/auth/v1/native/fast/?guid=aabbccddeeff",
+        ]),
+      );
+      expect(targets[0]).toContain("buy.itunes.apple.com");
+      expect(targets[1]).toContain("auth.itunes.apple.com");
+      expect(targets[2]).toContain("buy.itunes.apple.com");
     } finally {
       vi.useRealTimers();
     }

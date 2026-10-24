@@ -18,6 +18,50 @@ const TRANSIENT_STATUSES = new Set([204, 404, 429]);
 const MAX_ATTEMPTS = 8;
 const RETRY_DELAY_MS = 2_000;
 
+// The legacy endpoint, which is what the live bag advertises anyway. Kept as
+// its own constant because it is also a rotation target when the bag points
+// somewhere else.
+const LEGACY_AUTH_URL =
+  "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate";
+
+interface AuthEndpoint {
+  host: string;
+  path: string;
+}
+
+// The shedding is per route, so a retry goes to the next endpoint rather than
+// back to the one that just refused. Each is a separate draw. ipatool#513
+// reports the legacy endpoint answering 302 to a pod host where the reposted
+// body returns 200, which the redirect handling below already follows.
+//
+// Every candidate is in Apple's SAP-signed list and takes the same body, so
+// one signature covers all of them.
+function authEndpoints(bagURL: string, deviceId: string): AuthEndpoint[] {
+  const endpoints: AuthEndpoint[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of [bagURL, LEGACY_AUTH_URL, defaultAuthURL]) {
+    let url: URL;
+    try {
+      url = new URL(candidate);
+    } catch {
+      continue;
+    }
+    url.searchParams.set("guid", deviceId);
+    const key = url.toString();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    endpoints.push({
+      host: url.hostname,
+      path: `${url.pathname}${url.search}`,
+    });
+  }
+
+  return endpoints;
+}
+
 // One SAP session per page session. Setup costs two round-trips to Apple and
 // a session signs any number of bodies, so sign-in attempts and the
 // verification-code step that follows reuse it. A failed setup is not cached.
@@ -58,16 +102,11 @@ export async function authenticate(
   let storeFront = "";
   let lastError: Error | null = null;
 
-  const defaultAuthEndpoint = new URL(defaultAuthURL);
-  defaultAuthEndpoint.searchParams.set("guid", deviceId);
-  let requestHost = defaultAuthEndpoint.hostname;
-  let requestPath = `${defaultAuthEndpoint.pathname}${defaultAuthEndpoint.search}`;
-
   const bag = await fetchBag(deviceId);
-  const authEndpoint = new URL(bag.authURL);
-  authEndpoint.searchParams.set("guid", deviceId);
-  requestHost = authEndpoint.hostname;
-  requestPath = `${authEndpoint.pathname}${authEndpoint.search}`;
+  const endpoints = authEndpoints(bag.authURL, deviceId);
+  let endpointIndex = 0;
+  let requestHost = endpoints[0].host;
+  let requestPath = endpoints[0].path;
 
   // Apple requires X-Apple-ActionSignature over the body bytes of every
   // request to the auth endpoint. The session is established here in the
@@ -194,6 +233,9 @@ export async function authenticate(
         );
 
         if (currentAttempt < MAX_ATTEMPTS) {
+          endpointIndex = (endpointIndex + 1) % endpoints.length;
+          requestHost = endpoints[endpointIndex].host;
+          requestPath = endpoints[endpointIndex].path;
           await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
           continue;
         }
