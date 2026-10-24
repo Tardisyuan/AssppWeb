@@ -6,11 +6,15 @@ import { fetchBag, defaultAuthURL } from "./bag";
 import { prepareSigner } from "./sap/client";
 import i18n from "../i18n";
 
-// Apple returns these on the auth endpoint at random. ipatool retries the same
-// set: three attempts, ten seconds apart.
+// Apple's edge load-sheds this route: identical requests measured from a clean
+// network come back 204/301/403/404/500/503 at random, and only ~40% of them
+// carry the x-responding-instance header that proves MZFinance itself answered.
+// So the retry budget has to outlast the noise — eight tries miss the service
+// about 2% of the time, three missed it 20% of the time. The junk comes back in
+// milliseconds, so a short delay is enough.
 const TRANSIENT_STATUSES = new Set([204, 404, 429]);
-const MAX_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 10_000;
+const MAX_ATTEMPTS = 8;
+const RETRY_DELAY_MS = 2_000;
 
 export class AuthenticationError extends Error {
   constructor(

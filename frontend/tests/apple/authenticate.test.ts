@@ -180,17 +180,17 @@ describe("apple/authenticate", () => {
     }
   });
 
-  it("gives up after three transient statuses and names them", async () => {
+  it("gives up after the retry budget and names the statuses", async () => {
     vi.useFakeTimers();
     try {
       vi.mocked(fetchBag).mockResolvedValue({
         authURL:
           "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate",
       });
-      vi.mocked(appleRequest)
-        .mockResolvedValueOnce(reply(204, ""))
-        .mockResolvedValueOnce(reply(503, ""))
-        .mockResolvedValueOnce(reply(404, ""));
+      const statuses = [204, 503, 404, 204, 429, 500, 404, 503];
+      for (const status of statuses) {
+        vi.mocked(appleRequest).mockResolvedValueOnce(reply(status, ""));
+      }
 
       const pending = authenticate(
         "test@example.com",
@@ -200,18 +200,18 @@ describe("apple/authenticate", () => {
         "aabbccddeeff",
       ).catch((error: Error) => error);
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(60_000);
       const error = (await pending) as Error;
 
-      expect(error.message).toContain("204, 503, 404");
-      expect(vi.mocked(appleRequest)).toHaveBeenCalledTimes(3);
+      expect(error.message).toContain(statuses.join(", "));
+      expect(vi.mocked(appleRequest)).toHaveBeenCalledTimes(statuses.length);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  // An edge refusal and a service answering badly need different advice: one
-  // is the server's outbound IP, the other is Apple.
+  // An edge refusal and a service answering badly need different advice: the
+  // edge sheds load at random, a service answer means Apple read the request.
   it("reports an edge refusal when no Apple service stamped the response", async () => {
     vi.useFakeTimers();
     try {
@@ -231,10 +231,10 @@ describe("apple/authenticate", () => {
         "aabbccddeeff",
       ).catch((error: Error) => error);
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(60_000);
       const error = (await pending) as Error;
 
-      expect(error.message).toContain("refused before reaching");
+      expect(error.message).toContain("before reaching the sign-in service");
     } finally {
       vi.useRealTimers();
     }
@@ -259,7 +259,7 @@ describe("apple/authenticate", () => {
         "aabbccddeeff",
       ).catch((error: Error) => error);
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(60_000);
       const error = (await pending) as Error;
 
       expect(error.message).toContain("kept answering");
