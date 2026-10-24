@@ -1,13 +1,18 @@
-# Stage 1: Build frontend
-FROM node:22-alpine AS frontend-build
+# Build stages run on the build machine's native architecture (BUILDPLATFORM)
+# and produce platform-independent artifacts; only the runtime layer is built
+# per target platform, so the arm64 image does not run npm ci and vite build
+# under emulation.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Build backend
-FROM node:22-alpine AS backend-build
+# Produces dist/ (pure JS). This stage's node_modules is NOT copied into the
+# runtime image: native binaries (napi) must match the target platform, which
+# is installed there per-arch instead.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS backend-build
 RUN apk add --no-cache python3 make g++
 WORKDIR /app/backend
 COPY backend/package*.json ./
@@ -15,21 +20,29 @@ RUN npm ci
 COPY backend/ ./
 RUN npm run build
 
-# Stage 3: Apple framework images for kbsync, extracted from a public software
-# update package and verified against pinned digests. Layer caching skips the
-# ~380 MB range download on rebuilds.
-FROM node:22-alpine AS sap-assets
+# Apple framework images for kbsync, extracted from a public software update
+# package and verified against pinned digests. Mach-O images are the same
+# whatever the container's architecture, so this runs once on the build
+# machine; layer caching skips the ~380 MB range download on rebuilds.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS sap-assets
 WORKDIR /app/backend
 COPY --from=backend-build /app/backend ./
 RUN DATA_DIR=/tmp/sap-extract-work node --import tsx scripts/extract-sap-assets.mts /out
 
-# Stage 4: Runtime
 FROM node:22-alpine
 RUN apk add --no-cache zip
 WORKDIR /app
 COPY --from=backend-build /app/backend/dist ./dist
-COPY --from=backend-build /app/backend/node_modules ./node_modules
-COPY --from=backend-build /app/backend/package.json ./
+COPY backend/package*.json ./
+# Native modules install per target platform: @node-rs/crc32 (via
+# yauzl-promise) ships prebuilt napi binaries, but bufferutil (via wisp-js)
+# has no linux-arm64-musl prebuild and falls back to source compilation.
+# The toolchain is added and removed inside one layer, so it never bloats
+# the final image.
+RUN apk add --no-cache --virtual .node-build python3 make g++ \
+    && npm ci --omit=dev \
+    && apk del .node-build \
+    && npm cache clean --force
 COPY --from=frontend-build /app/frontend/dist ./public
 COPY --from=sap-assets /out /opt/asspp/sap-assets
 RUN mkdir -p /data/packages
