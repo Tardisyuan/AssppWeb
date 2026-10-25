@@ -448,6 +448,8 @@
       "termsRequired": "You must accept the Terms & Conditions: {{url}}",
       "failed": "Purchase failed: {{failureType}}",
       "failedGeneral": "Failed to purchase app",
+      "missingStorefront": "This account has no storefront on record, which the license request needs. Sign in again to refresh it.",
+      "failedWithMessage": "{{message}} (failureType {{failureType}})",
       "unknownError": "An unknown error has occurred"
     },
     "auth": {

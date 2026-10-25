@@ -448,6 +448,8 @@
       "termsRequired": "Вы должны принять Условия и положения: {{url}}",
       "failed": "Ошибка покупки: {{failureType}}",
       "failedGeneral": "Не удалось купить приложение",
+      "missingStorefront": "Для этой учётной записи не сохранён магазин, а запрос лицензии его требует. Войдите снова, чтобы обновить его.",
+      "failedWithMessage": "{{message}} (failureType {{failureType}})",
       "unknownError": "Произошла неизвестная ошибка"
     },
     "auth": {

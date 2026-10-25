@@ -448,6 +448,8 @@
       "termsRequired": "您必須接受條款與約定：{{url}}",
       "failed": "購買失敗：{{failureType}}",
       "failedGeneral": "購買應用程式失敗",
+      "missingStorefront": "該帳戶沒有記錄商店地區，而請求授權需要它。請重新登入以更新。",
+      "failedWithMessage": "{{message}}（failureType {{failureType}}）",
       "unknownError": "發生未知錯誤"
     },
     "auth": {

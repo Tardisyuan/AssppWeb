@@ -448,6 +448,8 @@
       "termsRequired": "利用規約に同意する必要があります: {{url}}",
       "failed": "購入失敗: {{failureType}}",
       "failedGeneral": "アプリの購入に失敗しました",
+      "missingStorefront": "このアカウントにはストアフロントが記録されていませんが、ライセンスの要求に必要です。再度サインインして更新してください。",
+      "failedWithMessage": "{{message}} (failureType {{failureType}})",
       "unknownError": "不明なエラーが発生しました"
     },
     "auth": {
