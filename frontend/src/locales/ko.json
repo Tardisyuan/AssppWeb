@@ -448,6 +448,8 @@
       "termsRequired": "이용 약관에 동의해야 합니다: {{url}}",
       "failed": "구매 실패: {{failureType}}",
       "failedGeneral": "앱 구매에 실패했습니다",
+      "missingStorefront": "이 계정에는 상점 지역이 기록되어 있지 않지만 라이선스 요즘에 필요합니다. 다시 로그인해 갱습하세요.",
+      "failedWithMessage": "{{message}} (failureType {{failureType}})",
       "unknownError": "알 수 없는 오류가 발생했습니다"
     },
     "auth": {

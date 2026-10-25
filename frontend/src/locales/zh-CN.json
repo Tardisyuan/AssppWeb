@@ -448,6 +448,8 @@
       "termsRequired": "您必须接受条款与条件：{{url}}",
       "failed": "购买失败：{{failureType}}",
       "failedGeneral": "购买应用失败",
+      "missingStorefront": "该账户没有记录商店地区，而请求许可证需要它。请重新登录以刷新。",
+      "failedWithMessage": "{{message}}（failureType {{failureType}}）",
       "unknownError": "发生未知错误"
     },
     "auth": {

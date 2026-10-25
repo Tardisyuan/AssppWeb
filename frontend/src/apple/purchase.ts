@@ -57,6 +57,14 @@ async function purchaseWithParams(account: Account, app: Software, pricingParame
     salableAdamId: app.id,
   };
 
+  // buyProduct keys off X-Apple-Store-Front. Apple sends the storefront header
+  // on some sign-in responses only, so an account stored before that value was
+  // carried forward can hold an empty string — which would send `-1` here and
+  // come back as a generic internal error naming nothing.
+  if (!account.store) {
+    throw new PurchaseError(i18n.t('errors.purchase.missingStorefront'));
+  }
+
   const plistBody = buildPlist(payload);
 
   const headers: Record<string, string> = {
@@ -83,6 +91,20 @@ async function purchaseWithParams(account: Account, app: Software, pricingParame
   if (dict.failureType) {
     const failureType = String(dict.failureType);
     const customerMessage = dict.customerMessage as string | undefined;
+
+    // Apple localizes customerMessage, so the text alone does not identify the
+    // failure, and the generic ones say nothing. The response rides the wisp
+    // tunnel, so devtools cannot show it either.
+    console.warn('[Purchase] buyProduct refused', {
+      failureType,
+      customerMessage,
+      dialog: (dict.dialog as Record<string, any>)?.explanation ?? (dict.dialog as Record<string, any>)?.message,
+      status: dict.status,
+      jingleDocType: dict.jingleDocType,
+      storeFront: headers['X-Apple-Store-Front'],
+      pricingParameters,
+      host,
+    });
     switch (failureType) {
       // buyProduct answers an already-licensed app with 5002 and the generic
       // "An unknown error has occurred"; the license exists, so this succeeds.
@@ -115,7 +137,14 @@ async function purchaseWithParams(account: Account, app: Software, pricingParame
           msg = i18n.t('errors.purchase.unknownError');
         }
 
-        throw new PurchaseError(msg ?? i18n.t('errors.purchase.failed', { failureType }), failureType);
+        // Apple's own wording, with the code appended: the message is what the
+        // user can act on, the code is what a report can be matched against.
+        throw new PurchaseError(
+          msg
+            ? i18n.t('errors.purchase.failedWithMessage', { message: msg, failureType })
+            : i18n.t('errors.purchase.failed', { failureType }),
+          failureType,
+        );
       }
     }
   }
@@ -124,6 +153,13 @@ async function purchaseWithParams(account: Account, app: Software, pricingParame
   const status = dict.status as number | undefined;
 
   if (jingleDocType !== 'purchaseSuccess' || status !== 0) {
+    console.warn('[Purchase] buyProduct did not report success', {
+      jingleDocType,
+      status,
+      storeFront: headers['X-Apple-Store-Front'],
+      pricingParameters,
+      host,
+    });
     throw new PurchaseError(i18n.t('errors.purchase.failedGeneral'));
   }
 
