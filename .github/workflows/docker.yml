@@ -47,6 +47,10 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            # A fixed tag for whatever branch is being worked on, so a test
+            # deployment can pull one name instead of a new commit sha each
+            # time. `latest` stays reserved for the default branch.
+            type=raw,value=dev,enable=${{ github.ref_type == 'branch' && github.ref_name != 'main' }}
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

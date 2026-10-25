@@ -92,6 +92,13 @@ async function purchaseWithParams(account: Account, app: Software, pricingParame
     const failureType = String(dict.failureType);
     const customerMessage = dict.customerMessage as string | undefined;
 
+    // buyProduct answers an already-licensed app with 5002 and the generic
+    // "An unknown error has occurred". The license exists, so this is a
+    // success and must not be logged as a refusal.
+    if (failureType === '5002') {
+      return { updatedCookies, alreadyOwned: true };
+    }
+
     // Apple localizes customerMessage, so the text alone does not identify the
     // failure, and the generic ones say nothing. The response rides the wisp
     // tunnel, so devtools cannot show it either.
@@ -106,10 +113,6 @@ async function purchaseWithParams(account: Account, app: Software, pricingParame
       host,
     });
     switch (failureType) {
-      // buyProduct answers an already-licensed app with 5002 and the generic
-      // "An unknown error has occurred"; the license exists, so this succeeds.
-      case '5002':
-        return { updatedCookies, alreadyOwned: true };
       case '2059':
         throw new PurchaseError(i18n.t('errors.purchase.unavailable'), '2059');
       case '2034':
