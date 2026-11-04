@@ -202,13 +202,31 @@ export async function downloadProduct(account: Account, app: Software, versionId
   // the first evidence of why — and it decides everything that follows, since
   // the dispatch fallback only runs because of it. Keys and scalars only: the
   // songList would carry the CDN URL and the SINFs.
+  const songList = dict.songList;
+  const firstItem = Array.isArray(songList) ? songList[0] : undefined;
   console.warn('[Download] volumeStore sent us to the fallback', {
     keys: Object.keys(dict).join(',') || '(empty plist)',
     status: dict.status,
-    failureType: dict.failureType,
-    customerMessage: dict.customerMessage,
+    failureType: dict.failureType ?? '(none)',
+    customerMessage: dict.customerMessage ?? '(none)',
     pod: account.pod ?? '(none)',
     requestedVersion: versionId ?? '(latest)',
+    // needsDownloadFallback() keys off songList's length, so its exact shape
+    // decides whether the dispatch fallback runs at all.
+    songListType: Array.isArray(songList) ? 'array' : typeof songList,
+    songListLength: Array.isArray(songList) ? songList.length : '(not an array)',
+    jingleDocType: dict.jingleDocType ?? '(none)',
+    jingleAction: dict.jingleAction ?? '(none)',
+    authorized: dict.authorized ?? '(none)',
+    queueCount: dict['download-queue-item-count'] ?? '(none)',
+    // Scalars only, never the URL or the SINFs.
+    firstItemKeys: firstItem ? Object.keys(firstItem).join(',') : '(no first item)',
+    firstItemMetadataKeys: firstItem?.metadata ? Object.keys(firstItem.metadata).join(',') : '(no metadata)',
+    firstItemId: firstItem?.songId ?? firstItem?.metadata?.itemId ?? '(none)',
+    firstItemVersion: firstItem?.metadata?.softwareVersionExternalIdentifier ?? '(none)',
+    firstItemBundle: firstItem?.metadata?.softwareVersionBundleId ?? '(none)',
+    firstItemHasUrl: Boolean(firstItem?.URL),
+    firstItemSinfCount: Array.isArray(firstItem?.sinfs) ? firstItem.sinfs.length : '(none)',
   });
 
   const bag = await fetchBag(account.deviceIdentifier);
