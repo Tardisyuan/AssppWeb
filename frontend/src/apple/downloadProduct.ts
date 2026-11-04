@@ -1,7 +1,7 @@
 import i18n from '../i18n';
 import { fetchBag } from './bag';
 import { lookupLatestVersion } from './latestVersion';
-import { extractAndMergeCookies } from './cookies';
+import { extractAndMergeCookies, buildCookieHeader } from './cookies';
 import { buildPlist, parsePlist } from './plist';
 import { appleRequest } from './request';
 import { redownloadEndpoint, volumeStoreEndpoint } from './config';
@@ -106,6 +106,32 @@ function validateDownloadItem(dict: Record<string, any>, app: Software, version?
   }
 }
 
+// Apple's services stamp these; the edge does not. A refusal rides the wisp
+// tunnel, so devtools cannot show its headers, and an empty body carries no
+// failure code — these headers are the only evidence of who refused and why.
+const DISPATCH_LOG_HEADERS = [
+  'apple-originating-system',
+  'x-responding-instance',
+  'x-apple-jingle-correlation-key',
+  'x-apple-request-uuid',
+  'apple-timing-app',
+  'content-type',
+  'content-length',
+  'location',
+  'www-authenticate',
+];
+
+function logDispatchFailure(response: AppleResponse, host: string, path: string, cookieNames: string[]): void {
+  if (response.status === 200) return;
+  console.warn(
+    `[Download] HTTP ${response.status} from ${host}${path.split('?')[0]}`,
+    Object.fromEntries(
+      DISPATCH_LOG_HEADERS.map((name) => [name, response.headers[name]]).filter(([, value]) => value !== undefined),
+    ),
+    { cookiesSent: cookieNames, bodyBytes: response.body.length },
+  );
+}
+
 /** Shared protocol for downloads, version lists, and pinned version metadata. */
 export async function downloadProduct(account: Account, app: Software, versionId?: string) {
   let cookies = [...account.cookies];
@@ -120,6 +146,13 @@ export async function downloadProduct(account: Account, app: Software, versionId
     let host = endpoint.host;
     let path = endpoint.path;
     for (let redirects = 0; redirects <= 3; redirects++) {
+      // Names only: the values are credentials. Which cookies survive the
+      // path rule is the question — Apple scopes the sign-in cookies to
+      // /WebObjects, and the dispatch endpoints live at /r and /up.
+      const sentCookieNames = buildCookieHeader(cookies, `https://${host}${path}`)
+        .split('; ')
+        .map((pair) => pair.split('=')[0])
+        .filter(Boolean);
       const response = await appleRequest({
         method: 'POST',
         host,
@@ -133,7 +166,10 @@ export async function downloadProduct(account: Account, app: Software, versionId
         cookies,
       });
       cookies = extractAndMergeCookies(response.rawHeaders, cookies);
-      if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+      if (![301, 302, 303, 307, 308].includes(response.status)) {
+        logDispatchFailure(response, host, path, sentCookieNames);
+        return response;
+      }
       if (!response.headers.location) throw new DownloadError('Missing Apple download redirect location');
       const url = new URL(response.headers.location, `https://${host}${path}`);
       if (
