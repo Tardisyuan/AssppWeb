@@ -128,7 +128,11 @@ function logDispatchFailure(response: AppleResponse, host: string, path: string,
     Object.fromEntries(
       DISPATCH_LOG_HEADERS.map((name) => [name, response.headers[name]]).filter(([, value]) => value !== undefined),
     ),
-    { cookiesSent: cookieNames, bodyBytes: response.body.length },
+    {
+      cookiesSent: cookieNames.join(',') || '(none)',
+      cookieCount: cookieNames.length,
+      bodyBytes: response.body.length,
+    },
   );
 }
 
@@ -194,6 +198,19 @@ export async function downloadProduct(account: Account, app: Software, versionId
     return { dict, updatedCookies: cookies };
   }
 
+  // The primary endpoint answered, but with nothing to download. Its shape is
+  // the first evidence of why — and it decides everything that follows, since
+  // the dispatch fallback only runs because of it. Keys and scalars only: the
+  // songList would carry the CDN URL and the SINFs.
+  console.warn('[Download] volumeStore sent us to the fallback', {
+    keys: Object.keys(dict).join(',') || '(empty plist)',
+    status: dict.status,
+    failureType: dict.failureType,
+    customerMessage: dict.customerMessage,
+    pod: account.pod ?? '(none)',
+    requestedVersion: versionId ?? '(latest)',
+  });
+
   const bag = await fetchBag(account.deviceIdentifier);
   // An unpinned dispatch request may return HTTP 500 or the tvOS build.
   let pinnedVersion = versionId;
@@ -207,6 +224,12 @@ export async function downloadProduct(account: Account, app: Software, versionId
   const redownload =
     dispatchEndpoint(bag.redownloadURL, 'redownload', account.deviceIdentifier) ??
     redownloadEndpoint(account.deviceIdentifier);
+  console.warn('[Download] retrying on the dispatch endpoint', {
+    host: redownload.host,
+    path: redownload.path.split('?')[0],
+    fromBag: Boolean(dispatchEndpoint(bag.redownloadURL, 'redownload', account.deviceIdentifier)),
+    pinnedVersion: pinnedVersion ?? '(none)',
+  });
   const response = await send(redownload, pinnedVersion);
   const emptyServerError = response.status === 500 && !response.body.trim();
   if (!emptyServerError) dict = responseDict(response, redownload);
