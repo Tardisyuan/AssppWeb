@@ -429,6 +429,7 @@
       "redirectLocation": "Failed to retrieve redirect location",
       "passwordExpired": "Password token is expired",
       "licenseRequired": "License required - purchase the app first",
+      "entDownloadRequired": "Apple has moved app downloads to its ent/download endpoint, which requires a signed kbsync blob this build cannot produce. The license was acquired and the app is queued on your Apple ID, so it will download on a signed-in device, but it cannot be fetched here. The legacy endpoints Apple left behind answer 403.",
       "downloadFailed": "Download failed: {{failureType}}",
       "noItems": "No items in response",
       "missingUrl": "Missing download URL",

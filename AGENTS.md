@@ -137,6 +137,28 @@ The Wisp server validates target hosts via `hostname_whitelist` in `backend/src/
 
 Downloads, version lists, and version metadata share `frontend/src/apple/downloadProduct.ts`. Preserve explicit auth/license failures. For empty/unavailable volumeStore results or 5002, use bag-resolved redownload; for empty HTTP 500 or recoverable redownload results, use bag-resolved updateProduct. Dispatch requests pin an iOS version, and responses must match the app/bundle/version.
 
+## Apple Moved App Downloads to ent/download
+
+The live bag no longer points `volumeStoreDownloadProduct` at the legacy MZFinance path:
+
+```
+volumeStoreDownloadProduct = https://downloaddispatch.itunes.apple.com/WebObjects/DownloadDispatch.woa/wa/ent/download
+redownloadProduct          = https://downloaddispatch.itunes.apple.com/r/redownload
+```
+
+`config.ts`'s `volumeStoreEndpoint()` still posts to `p{pod}-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct`, which Apple still answers — but not with a file. For an account that already holds the license it returns a purchase document and queues the app for the Apple ID's real devices:
+
+```
+status 0, jingleDocType purchaseSuccess, jingleAction purchaseProduct,
+authorized false, download-queue-item-count 1, songList []
+```
+
+`needsDownloadFallback()` reads that empty `songList` and tries the dispatch endpoints, which answer `403` with an empty body in 1 ms, stamped `apple-originating-system: DownloadDispatch`. Eight credential-free probes answered 403 eight times out of eight, so that is the service refusing rather than the edge shedding — the legacy endpoints are simply closed (majd/ipatool#577).
+
+`ent/download` requires a signed `kbsync` blob, produced by Apple's StoreAgent. This client cannot make one, so downloads cannot work here; upstream PR #98 implemented it by running StoreAgent on a TypeScript x86-64 interpreter and was closed. The request we send is otherwise identical to ipatool's (`Content-Type`, `iCloud-DSID`, `X-Dsid`, body of `creditDisplay`/`guid`/`salableAdamId`/`serialNumber` plus the version key), ipatool's own chain is the same one volumeStore → `/r/redownload` → `/up/updateProduct`, and ipatool reads neither `authorized` nor `jingleAction`.
+
+When the primary response carries `authorized: false` with `jingleAction: purchaseProduct` and the bag no longer advertises the legacy path, the failure is reported as `errors.download.entDownloadRequired` rather than as the dispatch 403, which is a symptom. Cookies are not the problem: nine reach `/r/redownload`, `mz_at_ssl-<dsid>` among them.
+
 ## Bag Proxy (Backend)
 
 The backend proxies the bag endpoint via `GET /api/bag?guid=<deviceId>` using Node.js native HTTPS. It sends Configurator-compatible request headers (`User-Agent`, `Accept: application/xml`). The bag response is public data (Apple service URLs) — no credentials are involved. See `backend/src/routes/bag.ts`.

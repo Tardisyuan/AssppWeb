@@ -429,6 +429,7 @@
       "redirectLocation": "リダイレクト先を取得できませんでした",
       "passwordExpired": "パスワードトークンの期限が切れています",
       "licenseRequired": "ライセンスが必要です - 先にアプリを購入してください",
+      "entDownloadRequired": "Apple はアプリのダウンロードを ent/download エンドポイントに移しました。そこは署名された kbsync ブロックを要求しますが、このビルドは生成できません。ライセンスは取得済みで、アプリは Apple ID のキューに入っているので、サインイン済みのデバイスではダウンロードされますが、ここでは取得できません。旧エンドポイントは 403 を返します。",
       "downloadFailed": "ダウンロード失敗: {{failureType}}",
       "noItems": "レスポンスに項目がありません",
       "missingUrl": "ダウンロードURLがありません",

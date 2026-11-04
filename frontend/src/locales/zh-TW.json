@@ -429,6 +429,7 @@
       "redirectLocation": "無法取得重新導向位址",
       "passwordExpired": "密碼權杖已過期",
       "licenseRequired": "需要授權 - 請先購買該應用程式",
+      "entDownloadRequired": "Apple 已將應用下載轉到 ent/download 接口，該接口需要一個經簽名的 kbsync 資料塊，目前版本無法產生。授權已取得，應用也已加入你 Apple ID 的下載佇列，在已登入的裝置上會自行下載，但這裡拿不到檔案。Apple 留下的舊接口返回 403。",
       "downloadFailed": "下載失敗: {{failureType}}",
       "noItems": "回應中沒有項目",
       "missingUrl": "缺少下載 URL",

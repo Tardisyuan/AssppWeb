@@ -429,6 +429,7 @@
       "redirectLocation": "리디렉션 주소를 가져올 수 없습니다",
       "passwordExpired": "비밀번호 토큰이 만료되었습니다",
       "licenseRequired": "라이선스가 필요합니다 - 앱을 먼저 구매하세요",
+      "entDownloadRequired": "Apple은 앱 다운로드를 ent/download 엔드토인트로 이전했습니다. 그 엔드토인트는 서명된 kbsync 데이튰 분량을 요구하며, 이 버전은 이를 만들 수 없습니다. 라이선스는 확보되었고 앱은 Apple ID 대기열에 들어가 로그인된 기기에서는 다운로드됩니다. 여기에서는 받을 수 없으며, 구 엔드토인트는 403을 반환합니다.",
       "downloadFailed": "다운로드 실패: {{failureType}}",
       "noItems": "응답에 항목이 없습니다",
       "missingUrl": "다운로드 URL이 없습니다",

@@ -5,6 +5,13 @@ export interface BagOutput {
   authURL: string;
   redownloadURL?: string;
   updateURL?: string;
+  /**
+   * What the bag now advertises for `volumeStoreDownloadProduct`: no longer the
+   * legacy MZFinance path, but `ent/download` on downloaddispatch, which wants
+   * a kbsync blob this client cannot produce. Carried so the download path can
+   * say that plainly instead of reporting the legacy endpoint's 403.
+   */
+  volumeStoreURL?: string;
 }
 
 export const defaultAuthURL = 'https://auth.itunes.apple.com/auth/v1/native/fast/';
@@ -66,6 +73,7 @@ export async function fetchBag(deviceId: string): Promise<BagOutput> {
     const downloadURLs = {
       redownloadURL: (dict.redownloadProduct ?? urlBag?.redownloadProduct) as string | undefined,
       updateURL: (dict.updateProduct ?? urlBag?.updateProduct) as string | undefined,
+      volumeStoreURL: (dict.volumeStoreDownloadProduct ?? urlBag?.volumeStoreDownloadProduct) as string | undefined,
     };
 
     if (!authURL) {

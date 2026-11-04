@@ -239,6 +239,21 @@ export async function downloadProduct(account: Account, app: Software, versionId
       throw new DownloadError(i18n.t('errors.download.versionLookupFailed'));
     }
   }
+  // Apple moved this endpoint. The bag's `volumeStoreDownloadProduct` now reads
+  //   https://downloaddispatch.itunes.apple.com/WebObjects/DownloadDispatch.woa/wa/ent/download
+  // which wants a kbsync blob, while this client still posts to the legacy
+  // MZFinance path. That path no longer serves files: it answers with a
+  // purchase document — jingleAction purchaseProduct, authorized false, an
+  // empty songList — and queues the app for the account's real devices
+  // instead, which is the response measured above. The legacy dispatch
+  // endpoints then answer 403 (majd/ipatool#577), so the fallback below cannot
+  // recover it and its 403 would be reported as the cause. Remember the shape
+  // so the failure can name the real one.
+  const entDownloadRequired =
+    dict.authorized === false &&
+    dict.jingleAction === 'purchaseProduct' &&
+    !bag.volumeStoreURL?.includes('volumeStoreDownloadProduct');
+
   const redownload =
     dispatchEndpoint(bag.redownloadURL, 'redownload', account.deviceIdentifier) ??
     redownloadEndpoint(account.deviceIdentifier);
@@ -248,7 +263,15 @@ export async function downloadProduct(account: Account, app: Software, versionId
     fromBag: Boolean(dispatchEndpoint(bag.redownloadURL, 'redownload', account.deviceIdentifier)),
     pinnedVersion: pinnedVersion ?? '(none)',
   });
-  const response = await send(redownload, pinnedVersion);
+  let response: AppleResponse;
+  try {
+    response = await send(redownload, pinnedVersion);
+  } catch (error) {
+    throw entDownloadRequired ? new DownloadError(i18n.t('errors.download.entDownloadRequired')) : error;
+  }
+  if (entDownloadRequired && response.status !== 200) {
+    throw new DownloadError(i18n.t('errors.download.entDownloadRequired'));
+  }
   const emptyServerError = response.status === 500 && !response.body.trim();
   if (!emptyServerError) dict = responseDict(response, redownload);
   const recoverable =
